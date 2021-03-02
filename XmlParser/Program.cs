@@ -73,17 +73,16 @@ namespace XmlParser
             var NodeValueFunc       = CreateLexicalFunc((c) => c != '<' );
             var AttrValueFunc       = CreateLexicalFunc((c) => c != '"' && c != '\'');
             var EqualSignFunc       = CreateLexicalFunc((c) => c == '=' );
-            var QuoteDoubleSignFunc = CreateLexicalFunc((c) => c == '"' );
-            var QuoteSingleSignFunc = CreateLexicalFunc((c) => c == '\'');
+            var QuoteSignFunc       = CreateLexicalFunc((c) => c == '"' || c == '\'' );
             var ExclamationSignFunc = CreateLexicalFunc((c) => c == '!' );
             var QuestionSignFunc    = CreateLexicalFunc((c) => c == '?' );
 
-            var beforeStartWhitespace   = CreateTransition("[ _ ]", WhitespaceFunc);
-            var startTagBracket         = CreateTransition("[ < ]", StartBracketFunc);
+            var beforeStartWhitespace   = CreateTransition("[ _ ]", WhitespaceFunc     );
+            var startTagBracket         = CreateTransition("[ < ]", StartBracketFunc   );
             var exclamationSign         = CreateTransition("[ ! ]", ExclamationSignFunc);
-            var version                 = CreateTransition("[ d ]", DoctypeValueFunc);
-            var questionSign            = CreateTransition("[ ? ]", QuestionSignFunc);
-            var afterStartTagWhitespace = CreateTransition("[ _ ]", WhitespaceFunc);
+            var version                 = CreateTransition("[ d ]", DoctypeValueFunc   );
+            var questionSign            = CreateTransition("[ ? ]", QuestionSignFunc   );
+            var afterStartTagWhitespace = CreateTransition("[ _ ]", WhitespaceFunc     );
             var startTagName            = CreateTransition("[^l ]", LetterFunc, () => new List<Action> { Action.CreateTag, Action.TagName });
             var tagName                 = CreateTransition("[ a ]", SymbolFunc, () => new List<Action> { Action.TagName });
             var afterTagNameWhitespace  = CreateTransition("[ _ ]", WhitespaceFunc);
@@ -96,19 +95,17 @@ namespace XmlParser
 
             var pairCloseSlash                  = CreateTransition("[ / ]", CloseTagSignFunc, () => new List<Action> { Action.CloseTag });
             var afterPairCloseSlashWhitespace   = CreateTransition("[ _ ]", WhitespaceFunc);
-            var pairCloseTagStartName           = CreateTransition("[^l ]", LetterFunc);
-            var pairCloseTagName                = CreateTransition("[ a ]", SymbolFunc);
+            var pairCloseTagStartName           = CreateTransition("[^l ]", LetterFunc    );
+            var pairCloseTagName                = CreateTransition("[ a ]", SymbolFunc    );
             var afterPairCloseTagNameWhitespace = CreateTransition("[ _ ]", WhitespaceFunc);
 
-            var startAttrName          = CreateTransition("[^l ]" , LetterFunc, () => new List<Action> { Action.CreateAttribute, Action.AttrName });
-            var attrName               = CreateTransition("[ a ]" , SymbolFunc, () => new List<Action> { Action.AttrName });
-            var equalSign              = CreateTransition("[ = ]" , EqualSignFunc);
-            var bwEqAndQuoteWhitespace = CreateTransition("[ _ ]" , WhitespaceFunc);
-            var quoteDoubleOpenSign    = CreateTransition("[ \" ]", QuoteDoubleSignFunc, () => new List<Action> { Action.AttrCreateValue });
-            var quoteSingleOpenSign    = CreateTransition("[ ' ]" , QuoteSingleSignFunc, () => new List<Action> { Action.AttrCreateValue });
-            var attrValue              = CreateTransition("[ t ]" , AttrValueFunc, () => new List<Action> { Action.AttrValue });
-            var quoteDoubleCloseSign   = CreateTransition("[ \" ]", QuoteDoubleSignFunc, () => new List<Action> { Action.AttrCloseValue });
-            var quoteSingleCloseSign   = CreateTransition("[ ' ]" , QuoteSingleSignFunc, () => new List<Action> { Action.AttrCloseValue });
+            var startAttrName          = CreateTransition("[^l ]", LetterFunc, () => new List<Action> { Action.CreateAttribute, Action.AttrName });
+            var attrName               = CreateTransition("[ a ]", SymbolFunc, () => new List<Action> { Action.AttrName });
+            var equalSign              = CreateTransition("[ = ]", EqualSignFunc );
+            var bwEqAndQuoteWhitespace = CreateTransition("[ _ ]", WhitespaceFunc);
+            var quoteOpenSign          = CreateTransition("[ q ]", QuoteSignFunc, () => new List<Action> { Action.AttrCreateValue });
+            var attrValue              = CreateTransition("[ t ]", AttrValueFunc, () => new List<Action> { Action.AttrValue });
+            var quoteCloseSign         = CreateTransition("[ q ]", QuoteSignFunc, () => new List<Action> { Action.AttrCloseValue });
 
             AddTransitionRule(
                 From(lexicalRoot, beforeStartWhitespace),
@@ -151,23 +148,14 @@ namespace XmlParser
 
             AddTransitionRule(
                 From(equalSign, bwEqAndQuoteWhitespace),
-                To(bwEqAndQuoteWhitespace, quoteDoubleOpenSign, quoteSingleOpenSign));
-
-
-            AddTransitionRule(
-                From(quoteDoubleOpenSign),
-                To(quoteDoubleCloseSign, attrValue));
+                To(bwEqAndQuoteWhitespace, quoteOpenSign));
 
             AddTransitionRule(
-                From(quoteSingleOpenSign),
-                To(quoteSingleCloseSign, attrValue));
+                From(quoteOpenSign, attrValue),
+                To(quoteCloseSign, attrValue));
 
             AddTransitionRule(
-                From(attrValue),
-                To(quoteDoubleCloseSign, quoteSingleCloseSign, attrValue));
-
-            AddTransitionRule(
-                From(quoteDoubleCloseSign, quoteSingleCloseSign),
+                From(quoteCloseSign),
                 To(afterTagNameWhitespace, selfCloseSlash, endTagBracket));
 
             /*Attributes end*/
