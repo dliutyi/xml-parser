@@ -360,7 +360,12 @@ namespace XmlParser
             var xmlLexicalParser = new LexicalQueue();
             var xmlRoot = xmlLexicalParser.Parse(xml);
             Console.WriteLine("");
-            xmlRoot.Children.ForEach(x => Console.WriteLine(ToString(x)));
+            if (xmlRoot != null) {
+                xmlRoot.Children.ForEach(x => Console.WriteLine(ToString(x)));
+            }
+            else {
+                Console.WriteLine("Parse error");
+            }
         }
     }
 }
