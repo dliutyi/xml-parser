@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<database>
+  <cities>
+    <city>Kyiv</city>
+    <city>Mykolaiv</city>
+  </cities>
+  <people>
+    <person firstname="Dmytro" lastname="Liutyi" />
+    <person firstname="Julia" lastname="Liuta" />
+  </people>
+</database>
