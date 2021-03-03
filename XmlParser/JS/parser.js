@@ -1,61 +1,40 @@
 function xmlFile() {
-    function isSeparator(c) {
-        console.log("char code is " + c.charCodeAt(0));
-        switch (c.charCodeAt(0)) {
-            case 0x000A:
-            case 0x000C:
-            case 0x000D:
-            case 0x0020:
-            case 0x00A0:
-            case 0x1680:
-            case 0x180E:
-            case 0x2000:
-            case 0x2001:
-            case 0x2002:
-            case 0x2003:
-            case 0x2004:
-            case 0x2005:
-            case 0x2006:
-            case 0x2007:
-            case 0x2008:
-            case 0x2009:
-            case 0x200A:
-            case 0x2028:
-            case 0x2029:
-            case 0x202F:
-            case 0x205F:
-            case 0x3000:
-                return true;
-        }
-        return false;
-    }
 
-    const emptyFunc = ["", null];
+    const separators = [
+        0x0000, 0x000A, 0x000C, 0x000D,
+        0x0020, 0x00A0, 0x1680, 0x180E,
+        0x2000, 0x2001, 0x2002, 0x2003,
+        0x2004, 0x2005, 0x2006, 0x2007,
+        0x2008, 0x2009, 0x200A, 0x2028,
+        0x2029, 0x202F, 0x205F, 0x3000
+    ];
+
+    const emptyFunc        = ["", null];
     const startBracketFunc = ["[ < ]", (c) => c == '<'];
-    const endBracketFunc = ["[ > ]", (c) => c == '>'];
-    const letterFunc = ["[^l ]", (c) => c.toLowerCase() != c.toUpperCase()];
-    const whitespaceFunc = ["[ _ ]", (c) => c == ' ' || isSeparator(c)];
-    const symbolFunc = ["[ a ]", (c) => c.toLowerCase() != c.toUpperCase() || (c > "0" && c <= "9") || c == '-' || c == ':'];
+    const endBracketFunc   = ["[ > ]", (c) => c == '>'];
+    const letterFunc       = ["[^l ]", (c) => c.toLowerCase() != c.toUpperCase()];
+    const whitespaceFunc   = ["[ _ ]", (c) => c == ' ' || separators.includes(c.charCodeAt(0))];
+    const symbolFunc       = ["[ a ]", (c) => c.toLowerCase() != c.toUpperCase() || (c > "0" && c <= "9") || c == '-' || c == ':'];
     const closeTagSignFunc = ["[ / ]", (c) => c == '/'];
     const doctypeValueFunc = ["[ d ]", (c) => c != '>'];
-    const nodeValueFunc = ["[ t ]", (c) => c != '<'];
-    const attrValueFunc = ["[ t ]", (c) => c != '"' && c != '\''];
-    const equalSignFunc = ["[ = ]", (c) => c == '='];
-    const quoteSignFunc = ["[ q ]", (c) => c == '"' || c == '\''];
-    const exclamationFunc = ["[ ! ]", (c) => c == '!'];
-    const questionFunc = ["[ ? ]", (c) => c == '?'];
+    const nodeValueFunc    = ["[ t ]", (c) => c != '<'];
+    const attrValueFunc    = ["[ t ]", (c) => c != '"' && c != '\''];
+    const equalSignFunc    = ["[ = ]", (c) => c == '='];
+    const quoteSignFunc    = ["[ q ]", (c) => c == '"' || c == '\''];
+    const exclamationFunc  = ["[ ! ]", (c) => c == '!'];
+    const questionFunc     = ["[ ? ]", (c) => c == '?'];
 
-    const Action_CreateTag = 0;
-    const Action_CreateValueTag = 1;
+    const Action_CreateTag       = 0;
+    const Action_CreateValueTag  = 1;
     const Action_CreateAttribute = 2;
-    const Action_TagName = 3;
-    const Action_TagValue = 4;
-    const Action_AttrName = 5;
+    const Action_TagName         = 3;
+    const Action_TagValue        = 4;
+    const Action_AttrName        = 5;
     const Action_AttrCreateValue = 6;
-    const Action_AttrValue = 7;
-    const Action_AttrCloseValue = 8;
-    const Action_SelfCloseTag = 9;
-    const Action_CloseTag = 10;
+    const Action_AttrValue       = 7;
+    const Action_AttrCloseValue  = 8;
+    const Action_SelfCloseTag    = 9;
+    const Action_CloseTag        = 10;
 
     let xmlParseState = {};
     let xmlGlobalRoot = null;
@@ -89,33 +68,33 @@ function xmlFile() {
     }
 
     function buildLexicalTree() {
-        let beforeStartWs = createTransition(whitespaceFunc);
-        let newTagStart = createTransition(startBracketFunc);
-        let exclamation = createTransition(exclamationFunc);
-        let version = createTransition(doctypeValueFunc);
-        let question = createTransition(questionFunc);
-        let startTagName = createTransition(letterFunc, Action_CreateTag, Action_TagName);
-        let tagName = createTransition(symbolFunc, Action_TagName);
-        let afterTagNameWs = createTransition(whitespaceFunc);
+        let beforeStartWs  = createTransition(whitespaceFunc  );
+        let newTagStart    = createTransition(startBracketFunc);
+        let exclamation    = createTransition(exclamationFunc );
+        let version        = createTransition(doctypeValueFunc);
+        let question       = createTransition(questionFunc    );
+        let startTagName   = createTransition(letterFunc      , Action_CreateTag, Action_TagName);
+        let tagName        = createTransition(symbolFunc      , Action_TagName);
+        let afterTagNameWs = createTransition(whitespaceFunc  );
         let selfCloseSlash = createTransition(closeTagSignFunc, Action_SelfCloseTag);
-        let newTagEnd = createTransition(endBracketFunc);
+        let newTagEnd      = createTransition(endBracketFunc  );
 
-        let valueTagWs = createTransition(whitespaceFunc);
-        let startTagValue = createTransition(nodeValueFunc, Action_CreateValueTag, Action_TagValue);
-        let tagValue = createTransition(nodeValueFunc, Action_TagValue);
+        let valueTagWs    = createTransition(whitespaceFunc);
+        let startTagValue = createTransition(nodeValueFunc , Action_CreateValueTag, Action_TagValue);
+        let tagValue      = createTransition(nodeValueFunc , Action_TagValue);
 
-        let pairCloseSlash = createTransition(closeTagSignFunc, Action_CloseTag);
-        let closeTagStartName = createTransition(letterFunc);
-        let closeTagName = createTransition(symbolFunc);
-        let afterCloseTagNameWs = createTransition(whitespaceFunc);
+        let pairCloseSlash      = createTransition(closeTagSignFunc, Action_CloseTag);
+        let closeTagStartName   = createTransition(letterFunc      );
+        let closeTagName        = createTransition(symbolFunc      );
+        let afterCloseTagNameWs = createTransition(whitespaceFunc  );
 
-        let startAttrName = createTransition(letterFunc, Action_CreateAttribute, Action_AttrName);
-        let attrName = createTransition(symbolFunc, Action_AttrName);
-        let equal = createTransition(equalSignFunc);
+        let startAttrName  = createTransition(letterFunc    , Action_CreateAttribute, Action_AttrName);
+        let attrName       = createTransition(symbolFunc    , Action_AttrName);
+        let equal          = createTransition(equalSignFunc );
         let bwEqAndQuoteWs = createTransition(whitespaceFunc);
-        let quoteOpen = createTransition(quoteSignFunc, Action_AttrCreateValue);
-        let attrValue = createTransition(attrValueFunc, Action_AttrValue);
-        let quoteClose = createTransition(quoteSignFunc, Action_AttrCloseValue);
+        let quoteOpen      = createTransition(quoteSignFunc , Action_AttrCreateValue);
+        let attrValue      = createTransition(attrValueFunc , Action_AttrValue);
+        let quoteClose     = createTransition(quoteSignFunc , Action_AttrCloseValue);
 
         newLexicalRoot = createTransition(emptyFunc);
         addRules(
