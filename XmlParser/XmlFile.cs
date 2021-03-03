@@ -89,6 +89,7 @@ namespace XmlParser
             Logger.Log($"Start parsing -\n{ xml }\n");
             var currentLexicalNode = _lexicalTree.LexicalNode;
 
+            _xmlParseState = new XmlParseState();
             _xmlParseState.CurrentXmlNode = new XmlNode();
             foreach (var c in xml)
             {
