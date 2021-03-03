@@ -14,42 +14,18 @@ namespace XmlParser
 
     class Program
     {
-        static string ToString(XmlNode xmlNode, int spaces = 0)
+        static string ToString(XmlNode xmlNode, string emp = "")
         {
-            if (xmlNode == null)
-            {
-                return "";
-            }
-
-            int tab = 3;
-            string emp = new string(' ', spaces * tab);
-            if (xmlNode.IsValueOnly)
-            {
-                return $"{ emp }{ xmlNode.Value }\n";
-            }
+            if (xmlNode == null) return "";
+            else if (xmlNode.IsValueOnly) return $"{ emp }{ xmlNode.Value }\n";
 
             string xml = $"{ emp }<{ xmlNode.Name }";
-
-            string attrs = string.Join(' ', xmlNode.Attributes.Select(attr => attr.HasValue ? $"{attr.Name}=\"{attr.Value}\"" : attr.Name));
-            if (attrs.Length > 0)
-            {
-                xml += $" { attrs }";
-            }
-
-            if (xmlNode.CanHaveChildren)
-            {
-                xml += ">\n";
-                foreach (var child in xmlNode.Children)
-                {
-                    xml += ToString(child, spaces + 1);
-                }
-                xml += $"{ emp }</{ xmlNode.Name }>\n";
-            }
-            else
-            {
-                xml += " />\n";
-            }
-            return xml;
+            xml += xmlNode.Attributes.Count > 0 
+                ? $" { string.Join(' ', xmlNode.Attributes.Select(attr => attr.HasValue ? $"{attr.Name}=\"{attr.Value}\"" : attr.Name)) }"
+                : "";
+            return xmlNode.CanHaveChildren
+                ? $"{ xml }>\n{ xmlNode.Children.Select(child => ToString(child, emp + "   ")).Aggregate((childXml, next) => childXml + next) }{ emp }</{ xmlNode.Name }>\n"
+                : $"{ xml }/>\n";
         }
 
         static void Main(string[] args)
