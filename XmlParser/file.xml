@@ -1,7 +1,12 @@
 ﻿<?xml version="1.0" encoding="utf-8" ?>
-<database msg="\"upload\"" response='\'success\''>
+<database msg="'upload'" response='"success"'>
   <cities>
-    <city>Kyiv</city>
+    <city>
+      Kyiv
+      <translation>
+        <russian>Киев</russian>
+      </translation>
+    </city>
     <city>Mykolaiv</city>
   </cities>
   <people>

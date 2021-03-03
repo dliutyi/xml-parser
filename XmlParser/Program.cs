@@ -9,6 +9,14 @@ using QueueLexicalRule = XmlParser.LexicalQueueNode<XmlParser.LexicalTransition<
 
 namespace XmlParser
 {
+    static class Logger
+    {
+        static public void Log(string str)
+        {
+            Console.WriteLine(str);
+        }
+    }
+
     class Params<T>
     {
         public T[] Ts;
@@ -129,12 +137,9 @@ namespace XmlParser
                 From(startTagName, tagName),
                 To(afterTagNameWhitespace, tagName, selfCloseSlash, endTagBracket));
 
-
             AddTransitionRule(
                 From(afterTagNameWhitespace),
                 To(afterTagNameWhitespace, selfCloseSlash, endTagBracket, startAttrName, equalSign));
-
-            /*Attributes start*/
 
             AddTransitionRule(
                 From(startAttrName, attrName),
@@ -151,8 +156,6 @@ namespace XmlParser
             AddTransitionRule(
                 From(quoteCloseSign),
                 To(afterTagNameWhitespace, selfCloseSlash, endTagBracket));
-
-            /*Attributes end*/
 
             AddTransitionRule(
                 From(selfCloseSlash),
@@ -177,19 +180,16 @@ namespace XmlParser
 
         public XmlNode Parse(string xml)
         {
-            Console.WriteLine("Start parsing -\n{0}\n", xml);
+            Logger.Log($"Start parsing -\n{ xml }\n");
             var quote = ' ';
-            var escape = false;
             var currentXmlNode = xmlRoot;
             var currentLexicalNode = lexicalRoot;
             foreach (var c in xml)
             {
-                Console.WriteLine("Trying to parse - {0}", c);
-
                 var error = true;
                 var parsingNodes = currentLexicalNode.Next;
-                Console.Write("   Trying apply - {0}", string.Join(", ", parsingNodes.Select(n => n.Name)));
-                Console.WriteLine("");
+             
+                Logger.Log($"Trying to parse - { c }\n   Trying apply - { string.Join(", ", parsingNodes.Select(n => n.Name)) }");
                 foreach (var parsingNode in parsingNodes)
                 {
                     if (parsingNode.Value.Transition(c))
@@ -203,6 +203,7 @@ namespace XmlParser
                                 case Action.CreateTag:
                                     if (currentXmlNode.IsValueOnly)
                                     {
+                                        currentXmlNode.Value = currentXmlNode.Value.Trim();
                                         currentXmlNode = currentXmlNode.Parent;
                                     }
 
@@ -232,26 +233,15 @@ namespace XmlParser
                                     currentXmlNode.Attributes.Last().HasValue = true;
                                     break;
                                 case Action.AttrCloseValue:
-                                    if (escape || quote != c)
+                                    if (quote != c)
                                     {
-                                        if (escape && quote == c)
-                                        {
-                                            escape = false;
-                                        }
-
                                         currentXmlNode.Attributes.Last().Value += c;
                                         isSuccess = false;
                                         break;
                                     }
-
-                                    quote = ' ';
+                                    currentXmlNode.Attributes.Last().Value = currentXmlNode.Attributes.Last().Value.Trim();
                                     break;
                                 case Action.AttrValue:
-                                    escape = false;
-                                    if (c == '\\')
-                                    {
-                                        escape = true;
-                                    }
                                     currentXmlNode.Attributes.Last().Value += c;
                                     break;
                                 case Action.SelfCloseTag:
@@ -261,6 +251,7 @@ namespace XmlParser
                                 case Action.CloseTag:
                                     if (currentXmlNode.IsValueOnly)
                                     {
+                                        currentXmlNode.Value = currentXmlNode.Value.Trim();
                                         currentXmlNode = currentXmlNode.Parent;
                                     }
                                     currentXmlNode = currentXmlNode.Parent;
@@ -268,7 +259,7 @@ namespace XmlParser
                             }
                         }
 
-                        Console.WriteLine("      {0} - Applied", parsingNode.Name);
+                        Logger.Log($"      { parsingNode.Name } - Applied");
 
                         error = false;
                         if (isSuccess)
@@ -281,11 +272,11 @@ namespace XmlParser
 
                 if (error)
                 {
-                    Console.WriteLine("End parsing");
+                    Logger.Log("Parse status - Error");
                     return null;
                 }
             }
-            Console.WriteLine("End parsing");
+            Logger.Log("Parse status - OK");
             return xmlRoot;
         }
     }
@@ -302,47 +293,43 @@ namespace XmlParser
             string emp = new string(' ', spaces * tab);
             if (xmlNode.IsValueOnly)
             {
-                return emp + xmlNode.Value + "\n";
+                return $"{ emp }{ xmlNode.Value }\n";
             }
 
-            StringBuilder xml = new StringBuilder();
-            xml.Append(string.Format("{0}<{1}", emp, xmlNode.Name));
+            string xml = $"{ emp }<{ xmlNode.Name }";
 
-            string attrs = string.Join(' ', xmlNode.Attributes.Select(attr => attr.HasValue ? string.Format("{0}=\"{1}\"", attr.Name, attr.Value) : attr.Name));
+            string attrs = string.Join(' ', xmlNode.Attributes.Select(attr => attr.HasValue ? $"{attr.Name}=\"{attr.Value}\"" : attr.Name));
             if (attrs.Length > 0)
             {
-                xml.AppendFormat(" {0}", attrs);
+                xml += $" { attrs }";
             }
 
             if (xmlNode.CanHaveChildren)
             {
-                xml.Append(">\n");
+                xml += ">\n";
                 foreach (var child in xmlNode.Children)
                 {
-                    xml.Append(ToString(child, spaces + 1));
+                    xml += ToString(child, spaces + 1);
                 }
-                xml.Append(emp + "</" + xmlNode.Name + ">\n");
+                xml += $"{ emp }</{ xmlNode.Name }>\n";
             }
             else
             {
-                xml.Append(" />\n");
+                xml += " />\n";
             }
-            return xml.ToString();
+            return xml;
         }
 
         static void Main(string[] args)
         {
             var xml = File.ReadAllText(@"file.xml");
 
-            Console.WriteLine("XML PARSER");
+            Logger.Log("XML PARSER");
             var xmlLexicalParser = new LexicalQueue();
             var xmlRoot = xmlLexicalParser.Parse(xml);
-            Console.WriteLine("");
+            Logger.Log("");
             if (xmlRoot != null) {
-                xmlRoot.Children.ForEach(x => Console.WriteLine(ToString(x)));
-            }
-            else {
-                Console.WriteLine("Parse error");
+                xmlRoot.Children.ForEach(x => Logger.Log(ToString(x)));
             }
         }
     }
