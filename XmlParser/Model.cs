@@ -19,12 +19,22 @@ namespace XmlParser
         CloseTag,
         None
     };
+    class Params<T>
+    {
+        public T[] Ts;
+        public Params(T[] ts)
+        {
+            Ts = ts;
+        }
+    }
+
     class XmlAttribute
     {
         public string Name { get; set; }
         public string Value { get; set; }
         public bool HasValue { get; set; } = false;
     }
+
     class XmlNode
     {
         public string Name { get; set; }
