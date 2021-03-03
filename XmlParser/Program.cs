@@ -82,7 +82,6 @@ namespace XmlParser
             var exclamationSign         = CreateTransition("[ ! ]", ExclamationSignFunc);
             var version                 = CreateTransition("[ d ]", DoctypeValueFunc   );
             var questionSign            = CreateTransition("[ ? ]", QuestionSignFunc   );
-            var afterStartTagWhitespace = CreateTransition("[ _ ]", WhitespaceFunc     );
             var startTagName            = CreateTransition("[^l ]", LetterFunc, () => new List<Action> { Action.CreateTag, Action.TagName });
             var tagName                 = CreateTransition("[ a ]", SymbolFunc, () => new List<Action> { Action.TagName });
             var afterTagNameWhitespace  = CreateTransition("[ _ ]", WhitespaceFunc);
@@ -94,7 +93,6 @@ namespace XmlParser
             var tagValue           = CreateTransition("[ t ]", NodeValueFunc, () => new List<Action> { Action.TagValue });
 
             var pairCloseSlash                  = CreateTransition("[ / ]", CloseTagSignFunc, () => new List<Action> { Action.CloseTag });
-            var afterPairCloseSlashWhitespace   = CreateTransition("[ _ ]", WhitespaceFunc);
             var pairCloseTagStartName           = CreateTransition("[^l ]", LetterFunc    );
             var pairCloseTagName                = CreateTransition("[ a ]", SymbolFunc    );
             var afterPairCloseTagNameWhitespace = CreateTransition("[ _ ]", WhitespaceFunc);
@@ -113,7 +111,7 @@ namespace XmlParser
 
             AddTransitionRule(
                 From(startTagBracket),
-                To(afterStartTagWhitespace, exclamationSign, questionSign, startTagName, pairCloseSlash));
+                To(exclamationSign, questionSign, startTagName, pairCloseSlash));
 
             AddTransitionRule(
                 From(exclamationSign, questionSign),
@@ -125,11 +123,7 @@ namespace XmlParser
 
             AddTransitionRule(
                 From(pairCloseSlash),
-                To(afterPairCloseSlashWhitespace, pairCloseTagStartName));
-
-            AddTransitionRule(
-                From(afterStartTagWhitespace),
-                To(afterStartTagWhitespace, startTagName));
+                To(pairCloseTagStartName));
 
             AddTransitionRule(
                 From(startTagName, tagName),
@@ -171,10 +165,6 @@ namespace XmlParser
             AddTransitionRule(
                 From(startTagValue, tagValue),
                 To(tagValue, startTagBracket));
-
-            AddTransitionRule(
-                From(afterPairCloseSlashWhitespace),
-                To(afterPairCloseSlashWhitespace, pairCloseTagStartName));
 
             AddTransitionRule(
                 From(pairCloseTagStartName, pairCloseTagName),
