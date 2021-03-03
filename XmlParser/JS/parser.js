@@ -1,4 +1,4 @@
-function parser() {
+function xmlFile() {
     const startBracketFunc = ["[ < ]", (c) => c == '<'];
     const endBracketFunc = ["[ > ]", (c) => c == '>'];
     const letterFunc = ["[^l ]", (c) => char.IsLetter(c)];
@@ -36,11 +36,41 @@ function parser() {
     }
 
     function buildLexicalTree() {
-        var beforeStartWs = createTransition(whitespaceFunc);
+        let beforeStartWs = createTransition(whitespaceFunc);
+        let newTagStart = createTransition(startBracketFunc);
+        let exclamation = createTransition(exclamationFunc);
+        let version = createTransition(doctypeValueFunc);
+        let question = createTransition(questionFunc);
+        let startTagName = createTransition(letterFunc, Action_CreateTag, Action_TagName);
+        let tagName = createTransition(symbolFunc, Action_TagName);
+        let afterTagNameWs = createTransition(whitespaceFunc);
+        let selfCloseSlash = createTransition(closeTagSignFunc, Action_SelfCloseTag);
+        let newTagEnd = createTransition(endBracketFunc);
+
+        let valueTagWs = createTransition(whitespaceFunc);
+        let startTagValue = createTransition(nodeValueFunc, Action_CreateValueTag, Action_TagValue);
+        let tagValue = createTransition(nodeValueFunc, Action_TagValue);
+
+        let pairCloseSlash = createTransition(closeTagSignFunc, Action_CloseTag);
+        let closeTagStartName = createTransition(letterFunc);
+        let closeTagName = createTransition(symbolFunc);
+        let afterCloseTagNameWs = createTransition(whitespaceFunc);
+
+        let startAttrName = createTransition(letterFunc, Action_CreateAttribute, Action_AttrName);
+        let attrName = createTransition(symbolFunc, Action_AttrName);
+        let equal = createTransition(equalSignFunc);
+        let bwEqAndQuoteWs = createTransition(whitespaceFunc);
+        let quoteOpen = createTransition(quoteSignFunc, Action_AttrCreateValue);
+        let attrValue = createTransition(attrValueFunc, Action_AttrValue);
+        let quoteClose = createTransition(quoteSignFunc, Action_AttrCloseValue);
     }
 
-    function parse() {
+    function processAction(action) {
 
+    }
+
+    function parse(xml) {
+        return null;
     }
 
     function toString(xmlNode, emp) {
@@ -59,11 +89,11 @@ function parser() {
 
     buildLexicalTree();
 
-    const fileXml = "<test></test>";
-    let xmlRoot = null;
+    const fileContent = "<test></test>";
+    let xmlRoot = parse(fileContent);
 
     const xmlpadElement = document.getElementById("xmlpad");
     xmlpadElement.value = toString(xmlRoot, "   ");
 }
 
-parser();
+xmlFile();

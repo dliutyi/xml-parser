@@ -16,14 +16,6 @@ namespace XmlParser
         SelfCloseTag,
         CloseTag
     };
-    class Params<T>
-    {
-        public List<T> Values;
-        public Params(List<T> values)
-        {
-            Values = values;
-        }
-    }
 
     class XmlAttribute
     {
@@ -43,18 +35,11 @@ namespace XmlParser
         public bool IsValueOnly { get; set; } = false;
     }
 
-    delegate bool TransitionDelegate(char c);
-
-    class LexicalTransition
+    class XmlParseState
     {
-        public TransitionDelegate Transition { get; set; }
-        public List<Action> Actions { get; set; }
-    }
-
-    class LexicalNode
-    {
-        public string Name { get; set; }
-        public LexicalTransition Value { get; set; }
-        public List<LexicalNode> Next { get; set; } = new List<LexicalNode>();
+        public XmlNode CurrentXmlNode { get; set; }
+        public Quote Quote { get; set; }
+        public bool IsActionSuccess { get; set; }
+        public bool IsValid { get; set; }
     }
 }
