@@ -1,5 +1,4 @@
-﻿using System.Collections.Generic;
-using System.Linq;
+﻿using System.Linq;
 
 using LexicalRule = XmlParser.LexicalTransition<XmlParser.TransitionDelegate, XmlParser.TransitionCallback>;
 using QueueLexicalRule = XmlParser.LexicalQueueNode<XmlParser.LexicalTransition<XmlParser.TransitionDelegate, XmlParser.TransitionCallback>>;
@@ -11,144 +10,118 @@ namespace XmlParser
         XmlNode xmlRoot = new XmlNode();
         QueueLexicalRule lexicalRoot = new QueueLexicalRule();
 
-        private TransitionDelegate CreateLexicalFunc(TransitionDelegate transitionDelegate)
-            => transitionDelegate;
+        private (string, TransitionDelegate) CreateLexicalFunc(string abbr, TransitionDelegate transitionDelegate)
+            => (abbr, transitionDelegate);
 
         private Params<QueueLexicalRule> From(params QueueLexicalRule[] lexicalQueueNodes) =>
-            new Params<QueueLexicalRule>(lexicalQueueNodes);
+            new Params<QueueLexicalRule>(lexicalQueueNodes.ToList());
 
         private Params<QueueLexicalRule> To(params QueueLexicalRule[] lexicalQueueNodes) =>
-            new Params<QueueLexicalRule>(lexicalQueueNodes);
+            new Params<QueueLexicalRule>(lexicalQueueNodes.ToList());
 
-        private QueueLexicalRule CreateTransition(string name, TransitionDelegate transitionDelegate, TransitionCallback transitionCallback = null) =>
+        private QueueLexicalRule CreateTransition((string, TransitionDelegate) transitionFunc, params Action[] actions) =>
             new QueueLexicalRule
             {
-                Name = name,
+                Name = transitionFunc.Item1,
                 Value = new LexicalRule
                 {
-                    Transition = transitionDelegate,
-                    Callback = transitionCallback ?? (() => new List<Action>())
+                    Transition = transitionFunc.Item2,
+                    Actions = actions.ToList()
                 }
             };
 
-        private void AddTransitionRule(Params<QueueLexicalRule> from, Params<QueueLexicalRule> to)
-        {
-            foreach (var nodeFrom in from.Ts)
-            {
-                foreach (var nodeTo in to.Ts)
-                {
-                    nodeFrom.Next.Add(nodeTo);
-                }
-            }
-        }
+        public void AddRules(params (Params<QueueLexicalRule>, Params<QueueLexicalRule>)[] rules) =>
+            rules.ToList().ForEach(rule => rule.Item1.Values.ForEach(from => rule.Item2.Values.ForEach(to => from.Next.Add(to))));
 
         public LexicalQueue()
         {
-            var StartBracketFunc = CreateLexicalFunc((c) => c == '<');
-            var EndBracketFunc = CreateLexicalFunc((c) => c == '>');
-            var LetterFunc = CreateLexicalFunc((c) => char.IsLetter(c));
-            var SymbolFunc = CreateLexicalFunc((c) => char.IsLetter(c) || char.IsDigit(c) || c == '-');
-            var WhitespaceFunc = CreateLexicalFunc((c) => char.IsWhiteSpace(c) || char.IsSeparator(c));
-            var CloseTagSignFunc = CreateLexicalFunc((c) => c == '/');
-            var DoctypeValueFunc = CreateLexicalFunc((c) => c != '>');
-            var NodeValueFunc = CreateLexicalFunc((c) => c != '<');
-            var AttrValueFunc = CreateLexicalFunc((c) => c != '"' && c != '\'');
-            var EqualSignFunc = CreateLexicalFunc((c) => c == '=');
-            var QuoteSignFunc = CreateLexicalFunc((c) => c == '"' || c == '\'');
-            var ExclamationSignFunc = CreateLexicalFunc((c) => c == '!');
-            var QuestionSignFunc = CreateLexicalFunc((c) => c == '?');
+            var StartBracketFunc = CreateLexicalFunc("[ < ]", (c) => c == '<');
+            var EndBracketFunc   = CreateLexicalFunc("[ > ]", (c) => c == '>');
+            var LetterFunc       = CreateLexicalFunc("[^l ]", (c) => char.IsLetter(c));
+            var SymbolFunc       = CreateLexicalFunc("[ a ]", (c) => char.IsLetterOrDigit(c) || c == '-' || c == ':');
+            var WhitespaceFunc   = CreateLexicalFunc("[ _ ]", (c) => char.IsWhiteSpace(c)    || char.IsSeparator(c) );
+            var CloseTagSignFunc = CreateLexicalFunc("[ / ]", (c) => c == '/');
+            var DoctypeValueFunc = CreateLexicalFunc("[ d ]", (c) => c != '>');
+            var NodeValueFunc    = CreateLexicalFunc("[ t ]", (c) => c != '<');
+            var AttrValueFunc    = CreateLexicalFunc("[ t ]", (c) => c != '"' && c != '\'');
+            var EqualSignFunc    = CreateLexicalFunc("[ = ]", (c) => c == '=');
+            var QuoteSignFunc    = CreateLexicalFunc("[ q ]", (c) => c == '"' || c == '\'');
+            var ExclamationFunc  = CreateLexicalFunc("[ ! ]", (c) => c == '!');
+            var QuestionFunc     = CreateLexicalFunc("[ ? ]", (c) => c == '?');
 
-            var beforeStartWhitespace = CreateTransition("[ _ ]", WhitespaceFunc);
-            var startTagBracket = CreateTransition("[ < ]", StartBracketFunc);
-            var exclamationSign = CreateTransition("[ ! ]", ExclamationSignFunc);
-            var version = CreateTransition("[ d ]", DoctypeValueFunc);
-            var questionSign = CreateTransition("[ ? ]", QuestionSignFunc);
-            var startTagName = CreateTransition("[^l ]", LetterFunc, () => new List<Action> { Action.CreateTag, Action.TagName });
-            var tagName = CreateTransition("[ a ]", SymbolFunc, () => new List<Action> { Action.TagName });
-            var afterTagNameWhitespace = CreateTransition("[ _ ]", WhitespaceFunc);
-            var selfCloseSlash = CreateTransition("[ / ]", CloseTagSignFunc, () => new List<Action> { Action.SelfCloseTag });
-            var endTagBracket = CreateTransition("[ > ]", EndBracketFunc);
+            var beforeStartWs  = CreateTransition(WhitespaceFunc  );
+            var newTagStart    = CreateTransition(StartBracketFunc);
+            var exclamation    = CreateTransition(ExclamationFunc );
+            var version        = CreateTransition(DoctypeValueFunc);
+            var question       = CreateTransition(QuestionFunc    );
+            var startTagName   = CreateTransition(LetterFunc, Action.CreateTag, Action.TagName);
+            var tagName        = CreateTransition(SymbolFunc, Action.TagName);
+            var afterTagNameWs = CreateTransition(WhitespaceFunc);
+            var selfCloseSlash = CreateTransition(CloseTagSignFunc, Action.SelfCloseTag);
+            var newTagEnd      = CreateTransition(EndBracketFunc);
 
-            var valueTagWhitespace = CreateTransition("[ _ ]", WhitespaceFunc);
-            var startTagValue = CreateTransition("[^t ]", NodeValueFunc, () => new List<Action> { Action.CreateValueTag, Action.TagValue });
-            var tagValue = CreateTransition("[ t ]", NodeValueFunc, () => new List<Action> { Action.TagValue });
+            var valueTagWs    = CreateTransition(WhitespaceFunc);
+            var startTagValue = CreateTransition(NodeValueFunc, Action.CreateValueTag, Action.TagValue);
+            var tagValue      = CreateTransition(NodeValueFunc, Action.TagValue);
 
-            var pairCloseSlash = CreateTransition("[ / ]", CloseTagSignFunc, () => new List<Action> { Action.CloseTag });
-            var pairCloseTagStartName = CreateTransition("[^l ]", LetterFunc);
-            var pairCloseTagName = CreateTransition("[ a ]", SymbolFunc);
-            var afterPairCloseTagNameWhitespace = CreateTransition("[ _ ]", WhitespaceFunc);
+            var pairCloseSlash      = CreateTransition(CloseTagSignFunc, Action.CloseTag);
+            var closeTagStartName   = CreateTransition(LetterFunc);
+            var closeTagName        = CreateTransition(SymbolFunc);
+            var afterCloseTagNameWs = CreateTransition(WhitespaceFunc);
 
-            var startAttrName = CreateTransition("[^l ]", LetterFunc, () => new List<Action> { Action.CreateAttribute, Action.AttrName });
-            var attrName = CreateTransition("[ a ]", SymbolFunc, () => new List<Action> { Action.AttrName });
-            var equalSign = CreateTransition("[ = ]", EqualSignFunc);
-            var bwEqAndQuoteWhitespace = CreateTransition("[ _ ]", WhitespaceFunc);
-            var quoteOpenSign = CreateTransition("[ q ]", QuoteSignFunc, () => new List<Action> { Action.AttrCreateValue });
-            var attrValue = CreateTransition("[ t ]", AttrValueFunc, () => new List<Action> { Action.AttrValue });
-            var quoteCloseSign = CreateTransition("[ q ]", QuoteSignFunc, () => new List<Action> { Action.AttrCloseValue });
+            var startAttrName  = CreateTransition(LetterFunc, Action.CreateAttribute, Action.AttrName );
+            var attrName       = CreateTransition(SymbolFunc, Action.AttrName);
+            var equal          = CreateTransition(EqualSignFunc );
+            var bwEqAndQuoteWs = CreateTransition(WhitespaceFunc);
+            var quoteOpen      = CreateTransition(QuoteSignFunc, Action.AttrCreateValue);
+            var attrValue      = CreateTransition(AttrValueFunc, Action.AttrValue      );
+            var quoteClose     = CreateTransition(QuoteSignFunc, Action.AttrCloseValue );
 
-            AddTransitionRule(
-                From(lexicalRoot, beforeStartWhitespace),
-                To(beforeStartWhitespace, startTagBracket));
+            AddRules(
+                 (From(lexicalRoot, beforeStartWs),
+                    To(beforeStartWs, newTagStart)),
+                 (From(newTagStart),
+                    To(exclamation, question, startTagName, pairCloseSlash)),
 
-            AddTransitionRule(
-                From(startTagBracket),
-                To(exclamationSign, questionSign, startTagName, pairCloseSlash));
+                 /*  [ <? ]  ||  [ <! ]  */
+                 (From(exclamation, question),
+                    To(version)),
+                 (From(version),
+                    To(version, newTagEnd)),
 
-            AddTransitionRule(
-                From(exclamationSign, questionSign),
-                To(version));
+                 /*  [ <tag ]  */
+                 (From(startTagName, tagName),
+                    To(afterTagNameWs, tagName, selfCloseSlash, newTagEnd)),
+                 (From(afterTagNameWs),
+                    To(afterTagNameWs, selfCloseSlash, newTagEnd, startAttrName, equal)),
 
-            AddTransitionRule(
-                From(version),
-                To(version, endTagBracket));
+                 /*  [ attrName="attrValue" ]  ||  [ attrName ]  */
+                 (From(startAttrName, attrName),
+                    To(attrName, equal, afterTagNameWs)),
+                 (From(equal, bwEqAndQuoteWs),
+                    To(bwEqAndQuoteWs, quoteOpen)),
+                 (From(quoteOpen, attrValue),
+                    To(quoteClose, attrValue)),
+                 (From(quoteClose),
+                    To(afterTagNameWs, selfCloseSlash, newTagEnd)),
 
-            AddTransitionRule(
-                From(pairCloseSlash),
-                To(pairCloseTagStartName));
+                 /*  [ /> ]  ||  [ > ]  */
+                 (From(selfCloseSlash),
+                    To(newTagEnd)),
+                 (From(newTagEnd, valueTagWs),
+                    To(valueTagWs, startTagValue, newTagStart)),
 
-            AddTransitionRule(
-                From(startTagName, tagName),
-                To(afterTagNameWhitespace, tagName, selfCloseSlash, endTagBracket));
+                 (From(startTagValue, tagValue),
+                    To(tagValue, newTagStart)),
 
-            AddTransitionRule(
-                From(afterTagNameWhitespace),
-                To(afterTagNameWhitespace, selfCloseSlash, endTagBracket, startAttrName, equalSign));
-
-            AddTransitionRule(
-                From(startAttrName, attrName),
-                To(attrName, equalSign, afterTagNameWhitespace));
-
-            AddTransitionRule(
-                From(equalSign, bwEqAndQuoteWhitespace),
-                To(bwEqAndQuoteWhitespace, quoteOpenSign));
-
-            AddTransitionRule(
-                From(quoteOpenSign, attrValue),
-                To(quoteCloseSign, attrValue));
-
-            AddTransitionRule(
-                From(quoteCloseSign),
-                To(afterTagNameWhitespace, selfCloseSlash, endTagBracket));
-
-            AddTransitionRule(
-                From(selfCloseSlash),
-                To(endTagBracket));
-
-            AddTransitionRule(
-                From(endTagBracket, valueTagWhitespace),
-                To(valueTagWhitespace, startTagValue, startTagBracket));
-
-            AddTransitionRule(
-                From(startTagValue, tagValue),
-                To(tagValue, startTagBracket));
-
-            AddTransitionRule(
-                From(pairCloseTagStartName, pairCloseTagName),
-                To(afterPairCloseTagNameWhitespace, pairCloseTagName, endTagBracket));
-
-            AddTransitionRule(
-                From(afterPairCloseTagNameWhitespace),
-                To(afterPairCloseTagNameWhitespace, endTagBracket));
+                 /*  [ </tag> ]  */
+                 (From(pairCloseSlash),
+                    To(closeTagStartName)),
+                 (From(closeTagStartName, closeTagName),
+                    To(afterCloseTagNameWs, closeTagName, newTagEnd)),
+                 (From(afterCloseTagNameWs),
+                    To(afterCloseTagNameWs, newTagEnd))
+            );
         }
 
         private char _quote;
@@ -234,9 +207,7 @@ namespace XmlParser
                     if (parsingNode.Value.Transition(c))
                     {
                         error = false;
-
-                        var actions = parsingNode.Value.Callback();
-                        var isSuccess = actions.TrueForAll(action => Process(action, c));
+                        var isSuccess = parsingNode.Value.Actions.TrueForAll(action => Process(action, c));
 
                         if (isSuccess)
                         {

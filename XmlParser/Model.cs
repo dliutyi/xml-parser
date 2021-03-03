@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using System.Collections.Generic;
 
 namespace XmlParser
 {
@@ -8,23 +6,22 @@ namespace XmlParser
     {
         CreateTag,
         CreateValueTag,
+        CreateAttribute,
         TagName,
         TagValue,
-        CreateAttribute,
         AttrName,
         AttrCreateValue,
         AttrValue,
         AttrCloseValue,
         SelfCloseTag,
-        CloseTag,
-        None
+        CloseTag
     };
     class Params<T>
     {
-        public T[] Ts;
-        public Params(T[] ts)
+        public List<T> Values;
+        public Params(List<T> values)
         {
-            Ts = ts;
+            Values = values;
         }
     }
 
@@ -52,7 +49,7 @@ namespace XmlParser
     class LexicalTransition<T, V>
     {
         public TransitionDelegate Transition { get; set; }
-        public TransitionCallback Callback { get; set; }
+        public List<Action> Actions { get; set; }
     }
 
     class LexicalQueueNode<T>
