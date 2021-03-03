@@ -44,18 +44,17 @@ namespace XmlParser
     }
 
     delegate bool TransitionDelegate(char c);
-    delegate List<Action> TransitionCallback();
 
-    class LexicalTransition<T, V>
+    class LexicalTransition
     {
         public TransitionDelegate Transition { get; set; }
         public List<Action> Actions { get; set; }
     }
 
-    class LexicalQueueNode<T>
+    class LexicalNode
     {
         public string Name { get; set; }
-        public T Value { get; set; }
-        public List<LexicalQueueNode<T>> Next { get; set; } = new List<LexicalQueueNode<T>>();
+        public LexicalTransition Value { get; set; }
+        public List<LexicalNode> Next { get; set; } = new List<LexicalNode>();
     }
 }

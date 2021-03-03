@@ -1,131 +1,22 @@
-﻿using System.Linq;
-
-using LexicalRule = XmlParser.LexicalTransition<XmlParser.TransitionDelegate, XmlParser.TransitionCallback>;
-using QueueLexicalRule = XmlParser.LexicalQueueNode<XmlParser.LexicalTransition<XmlParser.TransitionDelegate, XmlParser.TransitionCallback>>;
+﻿using System;
+using System.Linq;
 
 namespace XmlParser
 {
-    class LexicalQueue
+    using LexicalPair = ValueTuple<string, TransitionDelegate>;
+    enum Quote { Double, Single }
+    class XmlFile
     {
-        XmlNode xmlRoot = new XmlNode();
-        QueueLexicalRule lexicalRoot = new QueueLexicalRule();
+        XmlNode _xmlRoot;
+        XmlNode _currentXmlNode;
+        LexicalTree _lexicalTree;
 
-        private (string, TransitionDelegate) CreateLexicalFunc(string abbr, TransitionDelegate transitionDelegate)
-            => (abbr, transitionDelegate);
+        Quote _quote;
 
-        private Params<QueueLexicalRule> From(params QueueLexicalRule[] lexicalQueueNodes) =>
-            new Params<QueueLexicalRule>(lexicalQueueNodes.ToList());
-
-        private Params<QueueLexicalRule> To(params QueueLexicalRule[] lexicalQueueNodes) =>
-            new Params<QueueLexicalRule>(lexicalQueueNodes.ToList());
-
-        private QueueLexicalRule CreateTransition((string, TransitionDelegate) transitionFunc, params Action[] actions) =>
-            new QueueLexicalRule
-            {
-                Name = transitionFunc.Item1,
-                Value = new LexicalRule
-                {
-                    Transition = transitionFunc.Item2,
-                    Actions = actions.ToList()
-                }
-            };
-
-        public void AddRules(params (Params<QueueLexicalRule>, Params<QueueLexicalRule>)[] rules) =>
-            rules.ToList().ForEach(rule => rule.Item1.Values.ForEach(from => rule.Item2.Values.ForEach(to => from.Next.Add(to))));
-
-        public LexicalQueue()
+        public XmlFile()
         {
-            var StartBracketFunc = CreateLexicalFunc("[ < ]", (c) => c == '<');
-            var EndBracketFunc   = CreateLexicalFunc("[ > ]", (c) => c == '>');
-            var LetterFunc       = CreateLexicalFunc("[^l ]", (c) => char.IsLetter(c));
-            var SymbolFunc       = CreateLexicalFunc("[ a ]", (c) => char.IsLetterOrDigit(c) || c == '-' || c == ':');
-            var WhitespaceFunc   = CreateLexicalFunc("[ _ ]", (c) => char.IsWhiteSpace(c)    || char.IsSeparator(c) );
-            var CloseTagSignFunc = CreateLexicalFunc("[ / ]", (c) => c == '/');
-            var DoctypeValueFunc = CreateLexicalFunc("[ d ]", (c) => c != '>');
-            var NodeValueFunc    = CreateLexicalFunc("[ t ]", (c) => c != '<');
-            var AttrValueFunc    = CreateLexicalFunc("[ t ]", (c) => c != '"' && c != '\'');
-            var EqualSignFunc    = CreateLexicalFunc("[ = ]", (c) => c == '=');
-            var QuoteSignFunc    = CreateLexicalFunc("[ q ]", (c) => c == '"' || c == '\'');
-            var ExclamationFunc  = CreateLexicalFunc("[ ! ]", (c) => c == '!');
-            var QuestionFunc     = CreateLexicalFunc("[ ? ]", (c) => c == '?');
-
-            var beforeStartWs  = CreateTransition(WhitespaceFunc  );
-            var newTagStart    = CreateTransition(StartBracketFunc);
-            var exclamation    = CreateTransition(ExclamationFunc );
-            var version        = CreateTransition(DoctypeValueFunc);
-            var question       = CreateTransition(QuestionFunc    );
-            var startTagName   = CreateTransition(LetterFunc, Action.CreateTag, Action.TagName);
-            var tagName        = CreateTransition(SymbolFunc, Action.TagName);
-            var afterTagNameWs = CreateTransition(WhitespaceFunc);
-            var selfCloseSlash = CreateTransition(CloseTagSignFunc, Action.SelfCloseTag);
-            var newTagEnd      = CreateTransition(EndBracketFunc);
-
-            var valueTagWs    = CreateTransition(WhitespaceFunc);
-            var startTagValue = CreateTransition(NodeValueFunc, Action.CreateValueTag, Action.TagValue);
-            var tagValue      = CreateTransition(NodeValueFunc, Action.TagValue);
-
-            var pairCloseSlash      = CreateTransition(CloseTagSignFunc, Action.CloseTag);
-            var closeTagStartName   = CreateTransition(LetterFunc);
-            var closeTagName        = CreateTransition(SymbolFunc);
-            var afterCloseTagNameWs = CreateTransition(WhitespaceFunc);
-
-            var startAttrName  = CreateTransition(LetterFunc, Action.CreateAttribute, Action.AttrName );
-            var attrName       = CreateTransition(SymbolFunc, Action.AttrName);
-            var equal          = CreateTransition(EqualSignFunc );
-            var bwEqAndQuoteWs = CreateTransition(WhitespaceFunc);
-            var quoteOpen      = CreateTransition(QuoteSignFunc, Action.AttrCreateValue);
-            var attrValue      = CreateTransition(AttrValueFunc, Action.AttrValue      );
-            var quoteClose     = CreateTransition(QuoteSignFunc, Action.AttrCloseValue );
-
-            AddRules(
-                 (From(lexicalRoot, beforeStartWs),
-                    To(beforeStartWs, newTagStart)),
-                 (From(newTagStart),
-                    To(exclamation, question, startTagName, pairCloseSlash)),
-
-                 /*  [ <? ]  ||  [ <! ]  */
-                 (From(exclamation, question),
-                    To(version)),
-                 (From(version),
-                    To(version, newTagEnd)),
-
-                 /*  [ <tag ]  */
-                 (From(startTagName, tagName),
-                    To(afterTagNameWs, tagName, selfCloseSlash, newTagEnd)),
-                 (From(afterTagNameWs),
-                    To(afterTagNameWs, selfCloseSlash, newTagEnd, startAttrName, equal)),
-
-                 /*  [ attrName="attrValue" ]  ||  [ attrName ]  */
-                 (From(startAttrName, attrName),
-                    To(attrName, equal, afterTagNameWs)),
-                 (From(equal, bwEqAndQuoteWs),
-                    To(bwEqAndQuoteWs, quoteOpen)),
-                 (From(quoteOpen, attrValue),
-                    To(quoteClose, attrValue)),
-                 (From(quoteClose),
-                    To(afterTagNameWs, selfCloseSlash, newTagEnd)),
-
-                 /*  [ /> ]  ||  [ > ]  */
-                 (From(selfCloseSlash),
-                    To(newTagEnd)),
-                 (From(newTagEnd, valueTagWs),
-                    To(valueTagWs, startTagValue, newTagStart)),
-
-                 (From(startTagValue, tagValue),
-                    To(tagValue, newTagStart)),
-
-                 /*  [ </tag> ]  */
-                 (From(pairCloseSlash),
-                    To(closeTagStartName)),
-                 (From(closeTagStartName, closeTagName),
-                    To(afterCloseTagNameWs, closeTagName, newTagEnd)),
-                 (From(afterCloseTagNameWs),
-                    To(afterCloseTagNameWs, newTagEnd))
-            );
+            BuildLexicalTree();
         }
-
-        private char _quote;
-        private XmlNode _currentXmlNode;
 
         private bool Process(Action action, char c)
         {
@@ -160,11 +51,11 @@ namespace XmlParser
                     _currentXmlNode.Attributes.Last().Name += c;
                     return true; 
                 case Action.AttrCreateValue:
-                    _quote = c;
+                    _quote = ParseQuote(c);
                     _currentXmlNode.Attributes.Last().HasValue = true;
                     return true; 
                 case Action.AttrCloseValue:
-                    if (_quote != c)
+                    if (_quote != ParseQuote(c))
                     {
                         _currentXmlNode.Attributes.Last().Value += c;
                         return false;
@@ -193,9 +84,9 @@ namespace XmlParser
         public XmlNode Parse(string xml)
         {
             Logger.Log($"Start parsing -\n{ xml }\n");
-            var currentLexicalNode = lexicalRoot;
+            var currentLexicalNode = _lexicalTree.LexicalNode;
 
-            _currentXmlNode = xmlRoot;
+            _currentXmlNode = new XmlNode();
             foreach (var c in xml)
             {
                 var error = true;
@@ -225,7 +116,107 @@ namespace XmlParser
                 }
             }
             Logger.Log("Parse status - OK");
-            return xmlRoot;
+
+            _xmlRoot = _currentXmlNode;
+            return _xmlRoot;
         }
+
+        private Quote ParseQuote(char c) => c == '"' ? Quote.Double : Quote.Single;
+
+        private void BuildLexicalTree()
+        {
+            var beforeStartWs  = LexicalTree.CreateTransition(XmlFormatter.WhitespaceFunc  );
+            var newTagStart    = LexicalTree.CreateTransition(XmlFormatter.StartBracketFunc);
+            var exclamation    = LexicalTree.CreateTransition(XmlFormatter.ExclamationFunc );
+            var version        = LexicalTree.CreateTransition(XmlFormatter.DoctypeValueFunc);
+            var question       = LexicalTree.CreateTransition(XmlFormatter.QuestionFunc    );
+            var startTagName   = LexicalTree.CreateTransition(XmlFormatter.LetterFunc, Action.CreateTag, Action.TagName);
+            var tagName        = LexicalTree.CreateTransition(XmlFormatter.SymbolFunc, Action.TagName);
+            var afterTagNameWs = LexicalTree.CreateTransition(XmlFormatter.WhitespaceFunc);
+            var selfCloseSlash = LexicalTree.CreateTransition(XmlFormatter.CloseTagSignFunc, Action.SelfCloseTag);
+            var newTagEnd      = LexicalTree.CreateTransition(XmlFormatter.EndBracketFunc);
+
+            var valueTagWs    = LexicalTree.CreateTransition(XmlFormatter.WhitespaceFunc);
+            var startTagValue = LexicalTree.CreateTransition(XmlFormatter.NodeValueFunc, Action.CreateValueTag, Action.TagValue);
+            var tagValue      = LexicalTree.CreateTransition(XmlFormatter.NodeValueFunc, Action.TagValue);
+
+            var pairCloseSlash      = LexicalTree.CreateTransition(XmlFormatter.CloseTagSignFunc, Action.CloseTag);
+            var closeTagStartName   = LexicalTree.CreateTransition(XmlFormatter.LetterFunc);
+            var closeTagName        = LexicalTree.CreateTransition(XmlFormatter.SymbolFunc);
+            var afterCloseTagNameWs = LexicalTree.CreateTransition(XmlFormatter.WhitespaceFunc);
+
+            var startAttrName  = LexicalTree.CreateTransition(XmlFormatter.LetterFunc, Action.CreateAttribute, Action.AttrName);
+            var attrName       = LexicalTree.CreateTransition(XmlFormatter.SymbolFunc, Action.AttrName);
+            var equal          = LexicalTree.CreateTransition(XmlFormatter.EqualSignFunc );
+            var bwEqAndQuoteWs = LexicalTree.CreateTransition(XmlFormatter.WhitespaceFunc);
+            var quoteOpen      = LexicalTree.CreateTransition(XmlFormatter.QuoteSignFunc, Action.AttrCreateValue);
+            var attrValue      = LexicalTree.CreateTransition(XmlFormatter.AttrValueFunc, Action.AttrValue);
+            var quoteClose     = LexicalTree.CreateTransition(XmlFormatter.QuoteSignFunc, Action.AttrCloseValue);
+
+            LexicalNode lexicalRoot = new LexicalNode();
+            _lexicalTree = new LexicalTree(lexicalRoot);
+
+            _lexicalTree.AddRules(
+                 (LexicalTree.From(lexicalRoot, beforeStartWs),
+                    LexicalTree.To(beforeStartWs, newTagStart)),
+                 (LexicalTree.From(newTagStart),
+                    LexicalTree.To(exclamation, question, startTagName, pairCloseSlash)),
+
+                 /*  [ <? ]  ||  [ <! ]  */
+                 (LexicalTree.From(exclamation, question),
+                    LexicalTree.To(version)),
+                 (LexicalTree.From(version),
+                    LexicalTree.To(version, newTagEnd)),
+
+                 /*  [ <tag ]  */
+                 (LexicalTree.From(startTagName, tagName),
+                    LexicalTree.To(afterTagNameWs, tagName, selfCloseSlash, newTagEnd)),
+                 (LexicalTree.From(afterTagNameWs),
+                    LexicalTree.To(afterTagNameWs, selfCloseSlash, newTagEnd, startAttrName, equal)),
+
+                 /*  [ attrName="attrValue" ]  ||  [ attrName ]  */
+                 (LexicalTree.From(startAttrName, attrName),
+                    LexicalTree.To(attrName, equal, afterTagNameWs)),
+                 (LexicalTree.From(equal, bwEqAndQuoteWs),
+                    LexicalTree.To(bwEqAndQuoteWs, quoteOpen)),
+                 (LexicalTree.From(quoteOpen, attrValue),
+                    LexicalTree.To(quoteClose, attrValue)),
+                 (LexicalTree.From(quoteClose),
+                    LexicalTree.To(afterTagNameWs, selfCloseSlash, newTagEnd)),
+
+                 /*  [ /> ]  ||  [ > ]  */
+                 (LexicalTree.From(selfCloseSlash),
+                    LexicalTree.To(newTagEnd)),
+                 (LexicalTree.From(newTagEnd, valueTagWs),
+                    LexicalTree.To(valueTagWs, startTagValue, newTagStart)),
+
+                 (LexicalTree.From(startTagValue, tagValue),
+                    LexicalTree.To(tagValue, newTagStart)),
+
+                 /*  [ </tag> ]  */
+                 (LexicalTree.From(pairCloseSlash),
+                    LexicalTree.To(closeTagStartName)),
+                 (LexicalTree.From(closeTagStartName, closeTagName),
+                    LexicalTree.To(afterCloseTagNameWs, closeTagName, newTagEnd)),
+                 (LexicalTree.From(afterCloseTagNameWs),
+                    LexicalTree.To(afterCloseTagNameWs, newTagEnd))
+            );
+        }
+    }
+    static class XmlFormatter
+    {
+        public static LexicalPair StartBracketFunc = LexicalTree.CreateLexicalFunc("[ < ]", (c) => c == '<');
+        public static LexicalPair EndBracketFunc   = LexicalTree.CreateLexicalFunc("[ > ]", (c) => c == '>');
+        public static LexicalPair LetterFunc       = LexicalTree.CreateLexicalFunc("[^l ]", (c) => char.IsLetter(c));
+        public static LexicalPair WhitespaceFunc   = LexicalTree.CreateLexicalFunc("[ _ ]", (c) => char.IsWhiteSpace(c) || char.IsSeparator(c));
+        public static LexicalPair SymbolFunc       = LexicalTree.CreateLexicalFunc("[ a ]", (c) => char.IsLetterOrDigit(c) || c == '-' || c == ':');
+        public static LexicalPair CloseTagSignFunc = LexicalTree.CreateLexicalFunc("[ / ]", (c) => c == '/');
+        public static LexicalPair DoctypeValueFunc = LexicalTree.CreateLexicalFunc("[ d ]", (c) => c != '>');
+        public static LexicalPair NodeValueFunc    = LexicalTree.CreateLexicalFunc("[ t ]", (c) => c != '<');
+        public static LexicalPair AttrValueFunc    = LexicalTree.CreateLexicalFunc("[ t ]", (c) => c != '"' && c != '\'');
+        public static LexicalPair EqualSignFunc    = LexicalTree.CreateLexicalFunc("[ = ]", (c) => c == '=');
+        public static LexicalPair QuoteSignFunc    = LexicalTree.CreateLexicalFunc("[ q ]", (c) => c == '"' || c == '\'');
+        public static LexicalPair ExclamationFunc  = LexicalTree.CreateLexicalFunc("[ ! ]", (c) => c == '!');
+        public static LexicalPair QuestionFunc     = LexicalTree.CreateLexicalFunc("[ ? ]", (c) => c == '?');
     }
 }

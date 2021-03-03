@@ -33,7 +33,7 @@ namespace XmlParser
             var xml = File.ReadAllText(@"file.xml");
 
             Logger.Log("XML PARSER");
-            var xmlLexicalParser = new LexicalQueue();
+            var xmlLexicalParser = new XmlFile();
             var xmlRoot = xmlLexicalParser.Parse(xml);
             Logger.Log("");
             if (xmlRoot != null) {
