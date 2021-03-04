@@ -296,6 +296,7 @@ function editor() {
         return { valid: xmlParseState.isValid, root: xmlGlobalRoot };
     }
 
+    const cursor = () => "<span id='cursor'></span>";
     const tagValue = (name) => "<span class='value'>" + name + "</span>";
     const attrName = (name) => "<span class='attr-name'>" + name + "</span>";
     const attrValue = (name) => "<span class='attr-value'>" + name + "</span>";
@@ -314,7 +315,13 @@ function editor() {
             : xml + " />\n";
     }
 
-    function highlightSyntax(xmlNode, xmlContent) {
+    function highlightSyntax(xmlNode, xmlContent, cursorPosition) {
+        const tryPushCursor = (start, end) => {
+            if (start >= cursorPosition && cursorPosition < end) {
+                xmlContent = xmlContent.slice(0, cursorPosition) + cursor() + xmlContent.slice(cursorPosition);
+            }
+        };
+
         if (xmlNode == null) return "";
         else if (xmlNode.isValueOnly) {
             const startIndex = xmlNode.originPosition.value[0];
@@ -397,7 +404,7 @@ function editor() {
             console.log(beautified);
 
             const beautifiedParseResult = parse(lexicalTree, beautified);
-            xmlpadElement.innerHTML = highlightSyntax(beautifiedParseResult.root.children[0], beautified);
+            xmlpadElement.innerHTML = highlightSyntax(beautifiedParseResult.root.children[0], beautified, 0);
 
             console.log(reverseTraverse(beautifiedParseResult.root.children[0]));
         }
@@ -416,17 +423,18 @@ function editor() {
                 return preCaretRange.toString().length;
             }
 
-            const setCursorPosition = () => {
+            const setCursorPosition = (node, pos) => {
                 const cursorElement = document.getElementById("cursor");
+                if (cursorElement) {
+                    let range = document.createRange();
+                    range.setStart(cursorElement, 0);
+                    range.setEnd(cursorElement, 0);
+                    range.collapse(true);
 
-                let range = document.createRange();
-                range.setStart(cursorElement, 0);
-                range.setEnd(cursorElement, 0);
-                range.collapse(true);
-
-                let selection = window.getSelection();
-                selection.removeAllRanges();
-                selection.addRange(range);
+                    let selection = window.getSelection();
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                }
             }
 
             const cursorPosition = getCursorPosition();
@@ -440,10 +448,46 @@ function editor() {
                 xmlpadElement.className = "fail";
             }
 
-            let xmlContent = highlightSyntax(parseResult.root.children[0], xmlpadElement.innerText);
-
+            let xmlContent = highlightSyntax(parseResult.root.children[0], xmlpadElement.innerText, cursorPosition);
             xmlpadElement.innerHTML = xmlContent;
-            //setCursorPosition();
+
+            const getCursorNode = (cp) => {
+                let treeWalker = document.createTreeWalker(
+                    xmlpadElement,
+                    NodeFilter.SHOW_TEXT,
+                    { acceptNode: function (node) { return NodeFilter.FILTER_ACCEPT; } },
+                    false
+                );
+
+                let position = 0;
+                let currentNode = treeWalker.nextNode();
+                while (currentNode) {
+                    position += currentNode.length;
+
+                    if (cp < position) {
+                        console.log(position);
+
+                        let textElement = document.createElement("span");
+                        let textNode1 = document.createTextNode(currentNode.textContent.slice(0, position - cp));
+                        let cursorElement = document.createElement("span");
+                        cursorElement.id = "cursor";
+                        let textNode2 = document.createTextNode(currentNode.textContent.slice(position - cp));
+                        textElement.appendChild(textNode1);
+                        textElement.appendChild(cursorElement);
+                        textElement.appendChild(textNode2);
+
+                        currentNode.replaceWith(textElement);
+                        return;
+                    }
+                    currentNode = treeWalker.nextNode();
+                }
+
+                return [xmlpadElement, 0];
+            };
+
+            getCursorNode(cursorPosition);
+            //console.log(cursorNode);
+            setCursorPosition();
         };
 
         xmlpadElement.addEventListener("input", reparse);
