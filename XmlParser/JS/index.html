@@ -1,12 +1,59 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8" />
     <title>JS parser for xml files</title>
+
+    <style>
+        body {
+            background: #eee;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            text-align: center;
+        }
+
+        pre#xmlpad {
+            margin: 10px;
+
+            outline: none;
+            padding: 10px 20px;
+
+            color: brown;
+            background: #fafafa;
+            font-size: 1.2rem;
+
+            border: 2px solid;
+            border-radius: 5px;
+
+            overflow: auto;
+        }
+
+        pre#xmlpad.ok{
+            border-color: #000;
+        }
+
+        pre#xmlpad.fail{
+            border-color: #f00;
+        }
+
+        pre#xmlpad > span.value {
+            color: black;
+        }
+
+        pre#xmlpad > span.attr-name {
+            color: red;
+        }
+
+        pre#xmlpad > span.attr-value {
+            color: blue;
+        }
+    </style>
 </head>
 <body>
-    <h1>XML PAD</h1>
-    <textarea rows="30" cols="100" id="xmlpad"></textarea>
+    <h1>Editor</h1>
+    <pre id="xmlpad" class="ok" contenteditable="true" spellcheck="false"></pre>
     <script src="parser.js"></script>
 </body>
 </html>

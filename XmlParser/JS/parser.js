@@ -1,4 +1,4 @@
-function xmlFile() {
+function editor() {
 
     const separators = [
         0x0000, 0x000A, 0x000C, 0x000D,
@@ -24,35 +24,147 @@ function xmlFile() {
     const exclamationFunc  = ["[ ! ]", (c) => c == '!'];
     const questionFunc     = ["[ ? ]", (c) => c == '?'];
 
-    const Action_CreateTag       = 0;
-    const Action_CreateValueTag  = 1;
-    const Action_CreateAttribute = 2;
-    const Action_TagName         = 3;
-    const Action_TagValue        = 4;
-    const Action_AttrName        = 5;
-    const Action_AttrCreateValue = 6;
-    const Action_AttrValue       = 7;
-    const Action_AttrCloseValue  = 8;
-    const Action_SelfCloseTag    = 9;
-    const Action_CloseTag        = 10;
-
-    let xmlParseState = {};
-    let xmlGlobalRoot = null;
-    let newLexicalRoot = null;
-
     function log(text) {
-        console.log(text);
+        //console.log(text);
     }
 
-    function createTransition(transitionPair, ...actions) {
+    function createXmlNode() {
+        return {
+            name: "",
+            value: "",
+            parent: null,
+            attributes: [],
+            children: [],
+            canHaveChildren: true,
+            isValueOnly: false,
+            originPosition: {
+                name: [0, 0],
+                value: [0, 0]
+            }
+        };
+    }
+
+    function createXmlAttribute() {
+        return {
+            name: "",
+            value: "",
+            hasValue: false,
+            quote: ' ',
+            originPosition: {
+                name: [0, 0],
+                value: [0, 0]
+            }
+        };
+    }
+
+    function createTransition(transitionPair, actionHandlers = []) {
         return {
             name: transitionPair[0],
-            value: {
-                transition: transitionPair[1],
-                actions: actions
-            },
+            transition: transitionPair[1],
+            actions: actionHandlers,
             next: []
         }
+    }
+
+    function createTagHandler(xmlParseState, symbol, index) {
+        if (xmlParseState.currentXmlNode.isValueOnly) {
+            xmlParseState.currentXmlNode.value = xmlParseState.currentXmlNode.value.trim();
+            xmlParseState.currentXmlNode = xmlParseState.currentXmlNode.parent;
+        }
+
+        let xmlNode = createXmlNode();
+        xmlNode.parent = xmlParseState.currentXmlNode;
+        xmlNode.originPosition.name[0] = index;
+
+        xmlParseState.currentXmlNode.children.push(xmlNode);
+        xmlParseState.currentXmlNode = xmlNode;
+        return true;
+    }
+
+    function createValueTagHandler(xmlParseState, symbol, index) {
+        let xmlNode = createXmlNode();
+        xmlNode.parent = xmlParseState.currentXmlNode;
+        xmlNode.isValueOnly = true;
+        xmlNode.canHaveChildren = false;
+        xmlNode.originPosition.value[0] = index;
+
+        xmlParseState.currentXmlNode.children.push(xmlNode);
+        xmlParseState.currentXmlNode = xmlNode;
+        return true;
+    }
+
+    function tagNameHandler(xmlParseState, symbol, index) {
+        xmlParseState.currentXmlNode.name += symbol;
+        return true;
+    }
+
+    function tagValueHandler(xmlParseState, symbol, index) {
+        xmlParseState.currentXmlNode.value += symbol;
+        xmlParseState.currentXmlNode.originPosition.value[1] = index;
+        return true;
+    }
+
+    function createAttributeHandler(xmlParseState, symbol, index) {
+        let xmlAttr = createXmlAttribute();
+        xmlAttr.originPosition.name[0] = index;
+        xmlParseState.currentXmlNode.attributes.push(xmlAttr);
+        return true;
+    }
+
+    function attrNameHandler(xmlParseState, symbol, index) {
+        let attrs = xmlParseState.currentXmlNode.attributes;
+        attrs[attrs.length - 1].name += symbol;
+        attrs[attrs.length - 1].originPosition.name[1] = index;
+        return true;
+    }
+
+    function attrHasValueHandler(xmlParseState, symbol, index) {
+        let attrs = xmlParseState.currentXmlNode.attributes;
+        attrs[attrs.length - 1].hasValue = true;
+        attrs[attrs.length - 1].originPosition.name[1] = index;
+        return true;
+    }
+
+    function attrCreateValueHandler(xmlParseState, symbol, index) {
+        let attrs = xmlParseState.currentXmlNode.attributes;
+        attrs[attrs.length - 1].quote = symbol;
+        attrs[attrs.length - 1].hasValue = true;
+        attrs[attrs.length - 1].originPosition.value[0] = index;
+        return true;
+    }
+
+    function attrValueHandler(xmlParseState, symbol, index) {
+        let attrs = xmlParseState.currentXmlNode.attributes;
+        attrs[attrs.length - 1].value += symbol;
+        attrs[attrs.length - 1].originPosition.value[1] = index;
+        return true;
+    }
+
+    function attrCloseValueHandler(xmlParseState, symbol, index) {
+        let attrs = xmlParseState.currentXmlNode.attributes;
+        attrs[attrs.length - 1].originPosition.value[1] = index;
+        if (attrs[attrs.length - 1].quote != symbol) {
+            attrs[attrs.length - 1].value += symbol;
+            return false;
+        }
+        attrs[attrs.length - 1].value = attrs[attrs.length - 1].value.trim();
+        return true;
+    }
+
+    function selfCloseTagHandler(xmlParseState, symbol, index) {
+        xmlParseState.currentXmlNode.canHaveChildren = false;
+        xmlParseState.currentXmlNode = xmlParseState.currentXmlNode.parent;
+        return true;
+    }
+
+    function closeTagHandler(xmlParseState, symbol, index) {
+        if (xmlParseState.currentXmlNode.isValueOnly) {
+            xmlParseState.currentXmlNode.value = xmlParseState.currentXmlNode.value.trim();
+            xmlParseState.currentXmlNode = xmlParseState.currentXmlNode.parent;
+        }
+        xmlParseState.currentXmlNode.originPosition.name[1] = index;
+        xmlParseState.currentXmlNode = xmlParseState.currentXmlNode.parent;
+        return true;
     }
 
     function from(...params) {
@@ -60,6 +172,10 @@ function xmlFile() {
     }
 
     function to(...params) {
+        return params;
+    }
+
+    function actions(...params) {
         return params;
     }
 
@@ -73,28 +189,28 @@ function xmlFile() {
         let exclamation    = createTransition(exclamationFunc );
         let version        = createTransition(doctypeValueFunc);
         let question       = createTransition(questionFunc    );
-        let startTagName   = createTransition(letterFunc      , Action_CreateTag, Action_TagName);
-        let tagName        = createTransition(symbolFunc      , Action_TagName);
+        let startTagName   = createTransition(letterFunc      , actions(createTagHandler, tagNameHandler));
+        let tagName        = createTransition(symbolFunc      , actions(tagNameHandler));
         let afterTagNameWs = createTransition(whitespaceFunc  );
-        let selfCloseSlash = createTransition(closeTagSignFunc, Action_SelfCloseTag);
+        let selfCloseSlash = createTransition(closeTagSignFunc, actions(selfCloseTagHandler));
         let newTagEnd      = createTransition(endBracketFunc  );
 
         let valueTagWs    = createTransition(whitespaceFunc);
-        let startTagValue = createTransition(nodeValueFunc , Action_CreateValueTag, Action_TagValue);
-        let tagValue      = createTransition(nodeValueFunc , Action_TagValue);
+        let startTagValue = createTransition(nodeValueFunc , actions(createValueTagHandler, tagValueHandler));
+        let tagValue      = createTransition(nodeValueFunc , actions(tagValueHandler));
 
-        let pairCloseSlash      = createTransition(closeTagSignFunc, Action_CloseTag);
+        let pairCloseSlash      = createTransition(closeTagSignFunc, actions(closeTagHandler));
         let closeTagStartName   = createTransition(letterFunc      );
         let closeTagName        = createTransition(symbolFunc      );
         let afterCloseTagNameWs = createTransition(whitespaceFunc  );
 
-        let startAttrName  = createTransition(letterFunc    , Action_CreateAttribute, Action_AttrName);
-        let attrName       = createTransition(symbolFunc    , Action_AttrName);
-        let equal          = createTransition(equalSignFunc );
+        let startAttrName  = createTransition(letterFunc    , actions(createAttributeHandler, attrNameHandler));
+        let attrName       = createTransition(symbolFunc    , actions(attrNameHandler));
+        let equal          = createTransition(equalSignFunc , actions(attrHasValueHandler));
         let bwEqAndQuoteWs = createTransition(whitespaceFunc);
-        let quoteOpen      = createTransition(quoteSignFunc , Action_AttrCreateValue);
-        let attrValue      = createTransition(attrValueFunc , Action_AttrValue);
-        let quoteClose     = createTransition(quoteSignFunc , Action_AttrCloseValue);
+        let quoteOpen      = createTransition(quoteSignFunc , actions(attrCreateValueHandler));
+        let attrValue      = createTransition(attrValueFunc , actions(attrValueHandler));
+        let quoteClose     = createTransition(quoteSignFunc , actions(attrCloseValueHandler));
 
         newLexicalRoot = createTransition(emptyFunc);
         addRules(
@@ -117,7 +233,7 @@ function xmlFile() {
 
             /*  [ attrName="attrValue" ]  ||  [ attrName ]  */
             [from(startAttrName, attrName),
-               to(attrName, equal, afterTagNameWs)],
+               to(attrName, equal, afterTagNameWs, selfCloseSlash, newTagEnd)],
             [from(equal, bwEqAndQuoteWs),
                to(bwEqAndQuoteWs, quoteOpen)],
             [from(quoteOpen, attrValue),
@@ -142,109 +258,24 @@ function xmlFile() {
             [from(afterCloseTagNameWs),
                to(afterCloseTagNameWs, newTagEnd)]
         );
+
+        return newLexicalRoot;
     }
 
-    function createXmlNode() {
-        return {
-            name: "",
-            value: "",
-            parent: null,
-            attributes: [],
-            children: [],
-            canHaveChildren: true,
-            isValueOnly: false
-        };
-    }
+    function parse(xmlLexicalRoot, xml) {
+        let xmlParseState = {};
+        let xmlGlobalRoot = createXmlNode();
 
-    function createXmlAttribute() {
-        return {
-            name: "",
-            value: "",
-            hasValue: false
-        };
-    }
-
-    function process(action, c) {
-        switch (action) {
-            case Action_CreateTag:
-                if (xmlParseState.currentXmlNode.isValueOnly) {
-                    xmlParseState.currentXmlNode.value = xmlParseState.currentXmlNode.value.trim();
-                    xmlParseState.currentXmlNode = xmlParseState.currentXmlNode.parent;
-                }
-
-                let xmlNodeCT = createXmlNode();
-                xmlNodeCT.parent = xmlParseState.currentXmlNode;
-
-                xmlParseState.currentXmlNode.children.push(xmlNodeCT);
-                xmlParseState.currentXmlNode = xmlNodeCT;
-                return true;
-            case Action_CreateValueTag:
-                var xmlNodeCVT = createXmlNode();
-                xmlNodeCVT.parent = xmlParseState.currentXmlNode;
-                xmlNodeCVT.isValueOnly = true;
-                xmlNodeCVT.canHaveChildren = false
-
-                xmlParseState.currentXmlNode.children.push(xmlNodeCVT);
-                xmlParseState.currentXmlNode = xmlNodeCVT;
-                return true;
-            case Action_TagName:
-                xmlParseState.currentXmlNode.name += c;
-                return true;
-            case Action_TagValue:
-                xmlParseState.currentXmlNode.value += c;
-                return true;
-            case Action_CreateAttribute:
-                xmlParseState.currentXmlNode.attributes.push(createXmlAttribute());
-                return true;
-            case Action_AttrName:
-                let attrsAN = xmlParseState.currentXmlNode.attributes;
-                attrsAN[attrsAN.length - 1].name += c;
-                return true;
-            case Action_AttrCreateValue:
-                xmlParseState.quote = c;
-
-                let attrsACV = xmlParseState.currentXmlNode.attributes;
-                attrsACV[attrsACV.length - 1].hasValue = true;
-                return true;
-            case Action_AttrCloseValue:
-                let attrsACLV = xmlParseState.currentXmlNode.attributes;
-                if (xmlParseState.quote != c) {
-                    attrsACLV[attrsACLV.length - 1].value += c;
-                    return false;
-                }
-                attrsACLV[attrsACLV.length - 1].value = attrsACLV[attrsACLV.length - 1].value.trim();
-                return true;
-            case Action_AttrValue:
-                let attrsAV = xmlParseState.currentXmlNode.attributes;
-                attrsAV[attrsAV.length - 1].value += c;
-                return true;
-            case Action_SelfCloseTag:
-                xmlParseState.currentXmlNode.canHaveChildren = false;
-                xmlParseState.currentXmlNode = xmlParseState.currentXmlNode.parent;
-                return true;
-            case Action_CloseTag:
-                if (xmlParseState.currentXmlNode.isValueOnly) {
-                    xmlParseState.currentXmlNode.value = xmlParseState.currentXmlNode.value.trim();
-                    xmlParseState.currentXmlNode = xmlParseState.currentXmlNode.parent;
-                }
-                xmlParseState.currentXmlNode = xmlParseState.currentXmlNode.parent;
-                return true;
-            default: return false;
-        }
-    }
-
-    function parse(xml) {
         log("Start parsing -\n" + xml + "\n");
-        currentLexicalNode = newLexicalRoot;
-
-        xmlParseState.currentXmlNode = createXmlNode();
-        [...xml].every(c => {
+        currentLexicalNode = xmlLexicalRoot;
+        xmlParseState.currentXmlNode = xmlGlobalRoot;
+        [...xml].every((symbol, index) => {
             let parsingNodes = currentLexicalNode.next;
-            log("Trying to parse - " + c + "\n   Trying apply - " + parsingNodes.map(n => n.name).join(", "));
+            log("Trying to parse - " + symbol + "\n   Trying apply - " + parsingNodes.map(n => n.name).join(", "));
 
             xmlParseState.isValid = !parsingNodes.every(parsingNode => {
-                if (parsingNode.value.transition(c)) {
-                    xmlParseState.isActionSuccess = parsingNode.value.actions.every(action => process(action, c));
+                if (parsingNode.transition(symbol)) {
+                    xmlParseState.isActionSuccess = parsingNode.actions.every(action => action(xmlParseState, symbol, index));
                     if (xmlParseState.isActionSuccess) {
                         log("      " + parsingNode.name + " - Applied");
                         currentLexicalNode = parsingNode;
@@ -259,37 +290,171 @@ function xmlFile() {
 
         if (!xmlParseState.isValid) {
             log("Parse status - Error");
-            return null;
         }
 
         log("Parse status - OK");
-        xmlGlobalRoot = xmlParseState.currentXmlNode;
-        return xmlGlobalRoot;
+        return { valid: xmlParseState.isValid, root: xmlGlobalRoot };
     }
 
-    function toString(xmlNode, emp = "") {
+    const tagValue = (name) => "<span class='value'>" + name + "</span>";
+    const attrName = (name) => "<span class='attr-name'>" + name + "</span>";
+    const attrValue = (name) => "<span class='attr-value'>" + name + "</span>";
+
+    function beautify(xmlNode, emp = "") {
         if (xmlNode == null) return "";
         else if (xmlNode.isValueOnly) return emp + xmlNode.value + "\n";
 
         let xml = emp + "<" + xmlNode.name;
         xml += xmlNode.attributes.length > 0
-            ? " " + xmlNode.attributes.map(attr => attr.hasValue ? attr.name + "=\"" + attr.value + "\"" : attr.name).join(" ")
+            ? " " + xmlNode.attributes.map(attr => attr.hasValue ? attr.name + "=" + attr.quote + attr.value + attr.quote : attr.name).join(" ")
             : "";
 
         return xmlNode.canHaveChildren
-            ? xml + ">\n" + (xmlNode.children.map(child => toString(child, emp + "   ")).reduce(((childXml, next) => childXml + next), "")) + emp + "</" + xmlNode.name + ">\n"
-            : xml + "/>\n";
+            ? xml + ">\n" + (xmlNode.children.map(child => beautify(child, emp + "   ")).reduce(((childXml, next) => childXml + next), "")) + emp + "</" + xmlNode.name + ">\n"
+            : xml + " />\n";
     }
 
-    buildLexicalTree();
+    function highlightSyntax(xmlNode, xmlContent) {
+        if (xmlNode == null) return "";
+        else if (xmlNode.isValueOnly) {
+            const startIndex = xmlNode.originPosition.value[0];
+            const endIndex = xmlNode.originPosition.value[1] + 1;
+
+            return xmlContent.slice(0, startIndex) + tagValue(xmlContent.slice(startIndex, endIndex)) + xmlContent.slice(endIndex);
+        }
+        else if (xmlNode.canHaveChildren) {
+            const index = xmlNode.originPosition.name[1];
+            xmlContent = xmlContent.slice(0, index - 1) + "&lt;" + xmlContent.slice(index);
+
+            for (let i = xmlNode.children.length - 1; i >= 0; --i) {
+                xmlContent = highlightSyntax(xmlNode.children[i], xmlContent);
+            }
+        }
+
+        const attrs = xmlNode.attributes;
+        for (let i = attrs.length - 1; i >= 0; --i) {
+            if (attrs[i].hasValue) {
+                const startValueIndex = attrs[i].originPosition.value[0];
+                const endValueIndex = attrs[i].originPosition.value[1] + 1;
+                xmlContent = xmlContent.slice(0, startValueIndex) + attrValue(xmlContent.slice(startValueIndex, endValueIndex)) + xmlContent.slice(endValueIndex);
+            }
+
+            const startNameIndex = attrs[i].originPosition.name[0];
+            const endNameIndex = attrs[i].originPosition.name[1] + 1;
+            xmlContent = xmlContent.slice(0, startNameIndex) + attrName(xmlContent.slice(startNameIndex, endNameIndex)) + xmlContent.slice(endNameIndex);
+        }
+
+        const index = xmlNode.originPosition.name[0];
+        xmlContent = xmlContent.slice(0, index - 1) + "&lt;" + xmlContent.slice(index);
+
+        return xmlContent;
+    }
+
+    function reverseTraverse(xmlNode) {
+        if (xmlNode == null) return "";
+
+        if (xmlNode.isValueOnly) {
+            return " [" + xmlNode.originPosition.value[0] + ", " + xmlNode.originPosition.value[1] + "]" + xmlNode.value + "\n";
+        }
+
+        let xmlContent = "";
+        if (xmlNode.canHaveChildren) {
+            xmlContent += " [" + xmlNode.originPosition.name[1] + "]" + xmlNode.name + "\n";
+            for (let i = xmlNode.children.length - 1; i >= 0; --i) {
+                xmlContent += reverseTraverse(xmlNode.children[i]);
+            }
+        }
+
+        const attrs = xmlNode.attributes;
+        for (let i = attrs.length - 1; i >= 0; --i) {
+            xmlContent += " [" + attrs[i].originPosition.value[0] + ", " + attrs[i].originPosition.value[1] + "]" + attrs[i].value + "=" + "[" + attrs[i].originPosition.name[0] + ", " + attrs[i].originPosition.name[1] + "]"  + attrs[i].name;
+        }
+
+        return xmlContent + " [" + xmlNode.originPosition.name[0] + "]" + xmlNode.name + "\n";
+    }
+
+    //function beautify(xmlNode, emp = "") {
+    //    if (xmlNode == null) return "";
+    //    else if (xmlNode.isValueOnly) return emp + tagValue(xmlNode.value) + "\n";
+
+    //    let xml = emp + "&lt;" + xmlNode.name;
+    //    xml += xmlNode.attributes.length > 0
+    //        ? " " + xmlNode.attributes.map(attr => attr.hasValue ? attrName(attr.name + "=") + attrValue(attr.quote + attr.value + attr.quote) : attrName(attr.name)).join(" ")
+    //        : "";
+
+    //    return xmlNode.canHaveChildren
+    //        ? xml + ">\n" + (xmlNode.children.map(child => beautify(child, emp + "   ")).reduce(((childXml, next) => childXml + next), "")) + emp + "&lt;/" + xmlNode.name + ">\n"
+    //        : xml + "/>\n";
+    //}
+
+    function setupEditor(defaultText) {
+        const xmlpadElement = document.getElementById("xmlpad");
+
+        const lexicalTree = buildLexicalTree();
+        const parseResult = parse(lexicalTree, defaultText);
+        if (parseResult.valid) {
+            const beautified = beautify(parseResult.root.children[0]);
+            console.log(beautified);
+
+            const beautifiedParseResult = parse(lexicalTree, beautified);
+            xmlpadElement.innerHTML = highlightSyntax(beautifiedParseResult.root.children[0], beautified);
+
+            console.log(reverseTraverse(beautifiedParseResult.root.children[0]));
+        }
+        else {
+            xmlpadElement.innerText = defaultText; 
+            xmlpadElement.className = "fail";
+        }
+
+        const reparse = () => {
+            const getCursorPosition = () => {
+                const range = window.getSelection().getRangeAt(0);
+                let preCaretRange = range.cloneRange();
+
+                preCaretRange.selectNodeContents(xmlpadElement);
+                preCaretRange.setEnd(range.endContainer, range.endOffset);
+                return preCaretRange.toString().length;
+            }
+
+            const setCursorPosition = () => {
+                const cursorElement = document.getElementById("cursor");
+
+                let range = document.createRange();
+                range.setStart(cursorElement, 0);
+                range.setEnd(cursorElement, 0);
+                range.collapse(true);
+
+                let selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+            }
+
+            const cursorPosition = getCursorPosition();
+            console.log("Cursor position is " + cursorPosition);
+
+            const parseResult = parse(lexicalTree, xmlpadElement.innerText);
+            if (parseResult.valid) {
+                xmlpadElement.className = "ok";
+            }
+            else {
+                xmlpadElement.className = "fail";
+            }
+
+            let xmlContent = highlightSyntax(parseResult.root.children[0], xmlpadElement.innerText);
+
+            xmlpadElement.innerHTML = xmlContent;
+            //setCursorPosition();
+        };
+
+        xmlpadElement.addEventListener("input", reparse);
+    }
 
     const fileContent = `
-<?xml version="1.0" encoding="utf-8" ?> 
 <database msg="'upload'" response='"success"'>
     <cities>
         <city>
             Kyiv
-            <translation>
+            <translation a>
                 <russian>Киев</russian>
             </translation>
         </city>
@@ -301,12 +466,8 @@ function xmlFile() {
     </people>
 </database>
 `;
-    let xmlRoot = parse(fileContent);
 
-    const xmlpadElement = document.getElementById("xmlpad");
-    if (xmlRoot != null) {
-        xmlpadElement.value = xmlRoot.children.reduce(((acc, child) => acc + toString(child)), "");
-    }
+    setupEditor(fileContent);
 }
 
-xmlFile();
+editor();
