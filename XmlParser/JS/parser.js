@@ -44,7 +44,7 @@ function editor() {
             name: "",
             value: "",
             hasValue: false,
-            quote: ' ',
+            quote: '"',
             originPosition: {
                 name: [0, 0],
                 value: [0, 0]
@@ -281,6 +281,64 @@ function editor() {
         return { valid: xmlParseState.isValid, root: xmlGlobalRoot };
     }
 
+    function getRootName(xmlNode) {
+        return xmlNode.name;
+    }
+
+    function getNodeByName(xmlNode, nodeName) {
+        if (xmlNode == null) return null;
+        else if (xmlNode.name == nodeName) {
+            return xmlNode;
+        }
+        for (let i = 0; i < xmlNode.children.length; ++i) {
+            const node = getNodeByName(xmlNode.children[i], nodeName);
+            if (node) {
+                return node;
+            }
+        }
+        return null;
+    }
+
+    function appendNode(xmlNode, nodeName, node) {
+        let foundNode = getNodeByName(xmlNode, nodeName);
+        if (foundNode) {
+            foundNode.children.push(node);
+        }
+    }
+
+    // replace this method with that returns all attrs with the same nodeName and attrName
+    function getAttr(xmlNode, nodeName, attrName) {
+        let node = getNodeByName(xmlNode, nodeName);
+        if (node == null) return [null, null];
+        let attr = node.attributes.find(attr => attr.name.toLowerCase() == attrName.toLowerCase());
+        return attr !== undefined ? [node, attr] : [node, null];
+    }
+
+    function removeNodeById(xmlNode, nodeName, id) {
+        let attr = getAttr(xmlNode, nodeName, "id");
+        if (attr[1].value.toLowerCase() == id.toLowerCase()) {
+            let parent = attr[0].parent;
+            parent.children = parent.children.filter(child => child != attr[0]);
+        }
+    }
+
+    function updateAttribute(xmlNode, nodeName, attrName, attrValue) {
+        let attr = getAttr(xmlNode, nodeName, attrName)[1];
+        if (attr != null) {
+            attr.value = attrValue;
+        }
+    }
+
+    function getAttrValue(xmlNode, nodeName, attrName) {
+        const attr = getAttr(xmlNode, nodeName, attrName)[1];
+        return attr != null ? attr.value.toLowerCase() : null;
+    }
+
+    function doesIdExist(xmlNode, nodeName, id) {
+        const value = getAttrValue(xmlNode, nodeName, "id");
+        return (value != null && value == id.toLowerCase());
+    }
+
     const cursor = () => "<span id='cursor'></span>";
     const tagValue = (name) => "<span class='value'>" + name + "</span>";
     const attrName = (name) => "<span class='attr-name'>" + name + "</span>";
@@ -339,50 +397,68 @@ function editor() {
         }), { highlightedContent: "", sub: "" }).highlightedContent;
     }
 
-    function setupEditor(defaultText) {
-        const xmlpadElement = document.getElementById("xmlpad");
+    function reparse(xmlpadElement, lexicalTree, state, ev) {
+        console.log("reparse is activated");
+        const getCursorPosition = (inputType) => {
+            const selection = window.getSelection();
+            if (selection.rangeCount == 0) return 0; 
 
-        const lexicalTree = buildLexicalTree();
+            const range = selection.getRangeAt(0);
+            let preCaretRange = range.cloneRange();
+
+            preCaretRange.selectNodeContents(xmlpadElement);
+            preCaretRange.setEnd(range.endContainer, range.endOffset);
+            return preCaretRange.toString().length + (inputType == "insertParagraph");
+        }
+
+        const setCursorPosition = () => {
+            const cursorElement = document.getElementById("cursor");
+
+            let range = document.createRange();
+            range.setStart(cursorElement, 0);
+            range.setEnd(cursorElement, 0);
+            range.collapse(true);
+
+            let selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }
+
+        const cursorPosition = getCursorPosition(ev ? ev.inputType : "");
+        const result = parse(lexicalTree, xmlpadElement.innerText);
+
+        state.parseResult = {
+            root: result.valid ? result.root.children[0] : null,
+            valid: result.valid
+        };
+
+        xmlpadElement.className = state.parseResult.valid ? "ok" : "fail";
+        xmlpadElement.innerHTML = highlightSyntax(state.parseResult.root, xmlpadElement.innerText, cursorPosition);
+        setCursorPosition();
+    }
+
+    function rebeautifier(xmlNode, lexicalTree) {
+        const beautified = beautify(xmlNode);
+        const beautifiedParseResult = parse(lexicalTree, beautified);
+
+        state.parseResult = {
+            root: beautifiedParseResult.valid ? beautifiedParseResult.root.children[0] : null,
+            valid: beautifiedParseResult.valid
+        };
+        return highlightSyntax(state.parseResult.root, beautified, 0);
+    }
+
+    function setupEditor(xmlpadElement, lexicalTree, state, defaultText) {
         const parseResult = parse(lexicalTree, defaultText);
         if (parseResult.valid) {
-            const beautified = beautify(parseResult.root.children[0]);
-            const beautifiedParseResult = parse(lexicalTree, beautified);
-            xmlpadElement.innerHTML = highlightSyntax(beautifiedParseResult.root.children[0], beautified, 0);
+            xmlpadElement.innerHTML = rebeautifier(parseResult.root.children[0], lexicalTree);
         }
         else {
             xmlpadElement.innerText = defaultText;
             xmlpadElement.className = "fail";
         }
 
-        xmlpadElement.addEventListener("input", (ev) => {
-            const getCursorPosition = (inputType) => {
-                const range = window.getSelection().getRangeAt(0);
-                let preCaretRange = range.cloneRange();
-
-                preCaretRange.selectNodeContents(xmlpadElement);
-                preCaretRange.setEnd(range.endContainer, range.endOffset);
-                return preCaretRange.toString().length + (inputType == "insertParagraph");
-            } 
-
-            const setCursorPosition = () => {
-                const cursorElement = document.getElementById("cursor");
-
-                let range = document.createRange();
-                range.setStart(cursorElement, 0);
-                range.setEnd(cursorElement, 0);
-                range.collapse(true);
-
-                let selection = window.getSelection();
-                selection.removeAllRanges();
-                selection.addRange(range);
-            }
-
-            const cursorPosition = getCursorPosition(ev.inputType);
-            const parseResult = parse(lexicalTree, xmlpadElement.innerText);
-            xmlpadElement.className = parseResult.valid ? "ok" : "fail";
-            xmlpadElement.innerHTML = highlightSyntax(parseResult.root.children[0], xmlpadElement.innerText, cursorPosition);
-            setCursorPosition();
-        });
+        xmlpadElement.addEventListener("input", (ev) => reparse(xmlpadElement, lexicalTree, state, ev));
     }
 
     document.addEventListener('keydown', function (event) {
@@ -396,26 +472,80 @@ function editor() {
             document.execCommand('insertHTML', false, '   ');
         }
     });
-
     const fileContent = `
-<?xml version="1.0" encoding="utf-8" ?>
-<database msg="'upload'" response='"success"'>
-    <cities>
-        <city>
-            Kyiv
-            <translation>
-                <russian>Киев</russian>
-            </translation>
-        </city>
-        <city>Mykolaiv</city>
-    </cities>
-    <people>
-        <person firstname="Dmytro" lastname="Liutyi" />
-        <person firstname="Julia" lastname="Liuta" />
-    </people>
-</database>
+<PortOrder>
+   <FI PmPlacementBrokerIK="1" PmPlacementCptyIK="2" ContingencyDescription="My Contingency" ContingencyID="1" ContingencyCount="1" ID="NEWID-20210305141116273-1-000" Acct="ACC 010" PortName="P ID 005" PorIK="8005" Side="1" OrderType="5" TimeInForce="1" SettlDt="2025-04-18" PortGrp="Group E" PorGrpIK="7005" DimPortMasterID="DEFAULT" PortfolioMasterIK="1" DimDeskID="DEFAULT 1" Txt="FI instrument BOND." InitiatedBy="4" SubsType="0" PortCcy="USD" Ccy="USD" ValueCcy="USD" CustodyIK="1" Custody="BARC LON" CustodyAcct="Barclays London" Custodian="ABCD123456" AutoAllocate="true">
+      <Instrmt DimSecID="002819AB6" SecIK="1367087" Src="4" />
+      <Hdr SID="SCD" TID="FNT" SSub="SCD Trader 014" MsgID="NEWID-20210305141116273-1-000" Snt="2013-07-02T15:31:16" PosRsnd="False" />
+      <Estimates Value="1500000" Consideration="1600000" />
+      <OrdQty Qty="1000000" />
+      <TraderInfo PrefTrad="mark" />
+      <Pty R="11" ID="QA Team" />
+      <MatchingRules NettingRuleIK="2" BrokerNettingRuleIK="3" />
+   </FI>
+</PortOrder>
 `;
-    setupEditor(fileContent);
+
+    //<FreeCode ID="pORDERFC1" Value="ROUTEMOMGA" />
+
+    const lexicalTree = buildLexicalTree();
+
+    const rootElement = document.getElementById("root");
+    const tagElement = document.getElementById("tag");
+    const qtyElement = document.getElementById("qty");
+    const toogleElement = document.getElementById("toogle");
+    const xmlpadElement = document.getElementById("xmlpad");
+
+    let state = {
+        parseResult: null
+    };
+
+    setupEditor(xmlpadElement, lexicalTree, state, fileContent);
+
+    rootElement.value = getRootName(state.parseResult.root);
+
+    const node = getNodeByName(state.parseResult.root, "PortOrder");
+    tagElement.value = node.children[0].name;
+
+    let qty = getAttrValue(state.parseResult.root, "OrdQty", "Qty");
+    qtyElement.value = qty;
+
+    let momgaAttrID = createXmlAttribute();
+    momgaAttrID.name = "ID";
+    momgaAttrID.value = "pORDERFC1";
+    momgaAttrID.hasValue = true;
+
+    let momgaAttrValue = createXmlAttribute();
+    momgaAttrValue.name = "Value";
+    momgaAttrValue.value = "ROUTEMOMGA";
+    momgaAttrValue.hasValue = true;
+
+    let momgaFreeCode = createXmlNode();
+    momgaFreeCode.name = "FreeCode";
+    momgaFreeCode.canHaveChildren = false;
+    momgaFreeCode.attributes.push(momgaAttrID, momgaAttrValue);
+
+    let toogleState = !doesIdExist(state.parseResult.root, momgaFreeCode.name, momgaAttrID.value);
+    toogleElement.className = toogleState ? "on" : "off";
+
+    toogleElement.addEventListener("click", () => {
+        toogleState = !toogleState;
+        toogleElement.className = toogleState ? "on" : "off";
+
+        if (!toogleState) {
+            appendNode(state.parseResult.root, node.children[0].name, momgaFreeCode);
+        }
+        else {
+            removeNodeById(state.parseResult.root, "FreeCode", "pORDERFC1");
+        }
+
+        xmlpadElement.innerHTML = rebeautifier(state.parseResult.root, lexicalTree);
+    });
+
+    qtyElement.addEventListener("input", () => {
+        updateAttribute(state.parseResult.root, "OrdQty", "Qty", qtyElement.value);
+        xmlpadElement.innerHTML = rebeautifier(state.parseResult.root, lexicalTree);
+    });
 }
 
 editor();
