@@ -386,6 +386,10 @@ function editor() {
     }
 
     document.addEventListener('keydown', function (event) {
+        if (event.target.id != "xmlpad") {
+            return;
+        }
+
         var code = event.keyCode || event.which;
         if (code === 9) { 
             event.preventDefault();
