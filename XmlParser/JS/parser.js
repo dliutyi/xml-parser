@@ -385,6 +385,14 @@ function editor() {
         });
     }
 
+    document.addEventListener('keydown', function (event) {
+        var code = event.keyCode || event.which;
+        if (code === 9) { 
+            event.preventDefault();
+            document.execCommand('insertHTML', false, '   ');
+        }
+    });
+
     const fileContent = `
 <?xml version="1.0" encoding="utf-8" ?>
 <database msg="'upload'" response='"success"'>
