@@ -297,6 +297,7 @@ function editor() {
     }
 
     const cursor = () => "<span id='cursor'></span>";
+    const tagName = (name) => "&lt;";
     const tagValue = (name) => "<span class='value'>" + name + "</span>";
     const attrName = (name) => "<span class='attr-name'>" + name + "</span>";
     const attrValue = (name) => "<span class='attr-value'>" + name + "</span>";
@@ -315,84 +316,60 @@ function editor() {
             : xml + " />\n";
     }
 
-    function highlightSyntax(xmlNode, xmlContent, cursorPosition) {
-        const tryPushCursor = (start, end) => {
-            if (start >= cursorPosition && cursorPosition < end) {
-                xmlContent = xmlContent.slice(0, cursorPosition) + cursor() + xmlContent.slice(cursorPosition);
-            }
-        };
-
-        if (xmlNode == null) return "";
+    function traverse(xmlNode) {
+        if (xmlNode == null) {
+            return [];
+        }
         else if (xmlNode.isValueOnly) {
-            const startIndex = xmlNode.originPosition.value[0];
-            const endIndex = xmlNode.originPosition.value[1] + 1;
-
-            return xmlContent.slice(0, startIndex) + tagValue(xmlContent.slice(startIndex, endIndex)) + xmlContent.slice(endIndex);
+            return [{ start: xmlNode.originPosition.value[0], end: xmlNode.originPosition.value[1], func: tagValue }];
         }
-        else if (xmlNode.canHaveChildren) {
-            const index = xmlNode.originPosition.name[1];
-            xmlContent = xmlContent.slice(0, index - 1) + "&lt;" + xmlContent.slice(index);
 
-            for (let i = xmlNode.children.length - 1; i >= 0; --i) {
-                xmlContent = highlightSyntax(xmlNode.children[i], xmlContent);
+        let syntaxPoints = [{ start: xmlNode.originPosition.name[0] - 1, end: xmlNode.originPosition.name[0], func: tagName }];
+        for (let i = 0; i < xmlNode.attributes.length; ++i) {
+            const attr = xmlNode.attributes[i];
+            syntaxPoints.push({ start: attr.originPosition.name[0], end: attr.originPosition.name[1] + 1, func: attrName });
+            if (attr.hasValue) {
+                syntaxPoints.push({ start: attr.originPosition.value[0], end: attr.originPosition.value[1] + 1, func: attrValue });
             }
         }
 
-        const attrs = xmlNode.attributes;
-        for (let i = attrs.length - 1; i >= 0; --i) {
-            if (attrs[i].hasValue) {
-                const startValueIndex = attrs[i].originPosition.value[0];
-                const endValueIndex = attrs[i].originPosition.value[1] + 1;
-                xmlContent = xmlContent.slice(0, startValueIndex) + attrValue(xmlContent.slice(startValueIndex, endValueIndex)) + xmlContent.slice(endValueIndex);
-            }
-
-            const startNameIndex = attrs[i].originPosition.name[0];
-            const endNameIndex = attrs[i].originPosition.name[1] + 1;
-            xmlContent = xmlContent.slice(0, startNameIndex) + attrName(xmlContent.slice(startNameIndex, endNameIndex)) + xmlContent.slice(endNameIndex);
-        }
-
-        const index = xmlNode.originPosition.name[0];
-        xmlContent = xmlContent.slice(0, index - 1) + "&lt;" + xmlContent.slice(index);
-
-        return xmlContent;
-    }
-
-    function reverseTraverse(xmlNode) {
-        if (xmlNode == null) return "";
-
-        if (xmlNode.isValueOnly) {
-            return " [" + xmlNode.originPosition.value[0] + ", " + xmlNode.originPosition.value[1] + "]" + xmlNode.value + "\n";
-        }
-
-        let xmlContent = "";
         if (xmlNode.canHaveChildren) {
-            xmlContent += " [" + xmlNode.originPosition.name[1] + "]" + xmlNode.name + "\n";
-            for (let i = xmlNode.children.length - 1; i >= 0; --i) {
-                xmlContent += reverseTraverse(xmlNode.children[i]);
+            for (let i = 0; i < xmlNode.children.length; ++i) {
+                syntaxPoints = syntaxPoints.concat(traverse(xmlNode.children[i]));
+            }
+            syntaxPoints.push({ start: xmlNode.originPosition.name[1] - 1, end: xmlNode.originPosition.name[1], func: tagName });
+        }
+
+        return syntaxPoints;
+    }
+
+    function highlightSyntax(xmlNode, xmlContent, cursorPosition) {
+        const syntaxPoints = traverse(xmlNode);
+
+        let sub = "";
+        let pointsIndex = 0;
+        let highlightedContent = "";
+        for (let i = 0; i < xmlContent.length; ++i) {
+            if (pointsIndex < syntaxPoints.length && syntaxPoints[pointsIndex].start <= i && syntaxPoints[pointsIndex].end > i) {
+                if (cursorPosition == i) {
+                    sub += cursor();
+                }
+                sub += xmlContent[i];
+            }
+            else {
+                if (pointsIndex < syntaxPoints.length && syntaxPoints[pointsIndex].end == i) {
+                    highlightedContent += syntaxPoints[pointsIndex++].func(sub);
+                    sub = "";
+                }
+                if (cursorPosition == i) {
+                    highlightedContent += cursor();
+                }
+                highlightedContent += xmlContent[i];
             }
         }
 
-        const attrs = xmlNode.attributes;
-        for (let i = attrs.length - 1; i >= 0; --i) {
-            xmlContent += " [" + attrs[i].originPosition.value[0] + ", " + attrs[i].originPosition.value[1] + "]" + attrs[i].value + "=" + "[" + attrs[i].originPosition.name[0] + ", " + attrs[i].originPosition.name[1] + "]"  + attrs[i].name;
-        }
-
-        return xmlContent + " [" + xmlNode.originPosition.name[0] + "]" + xmlNode.name + "\n";
+        return highlightedContent;
     }
-
-    //function beautify(xmlNode, emp = "") {
-    //    if (xmlNode == null) return "";
-    //    else if (xmlNode.isValueOnly) return emp + tagValue(xmlNode.value) + "\n";
-
-    //    let xml = emp + "&lt;" + xmlNode.name;
-    //    xml += xmlNode.attributes.length > 0
-    //        ? " " + xmlNode.attributes.map(attr => attr.hasValue ? attrName(attr.name + "=") + attrValue(attr.quote + attr.value + attr.quote) : attrName(attr.name)).join(" ")
-    //        : "";
-
-    //    return xmlNode.canHaveChildren
-    //        ? xml + ">\n" + (xmlNode.children.map(child => beautify(child, emp + "   ")).reduce(((childXml, next) => childXml + next), "")) + emp + "&lt;/" + xmlNode.name + ">\n"
-    //        : xml + "/>\n";
-    //}
 
     function setupEditor(defaultText) {
         const xmlpadElement = document.getElementById("xmlpad");
@@ -401,12 +378,8 @@ function editor() {
         const parseResult = parse(lexicalTree, defaultText);
         if (parseResult.valid) {
             const beautified = beautify(parseResult.root.children[0]);
-            console.log(beautified);
-
             const beautifiedParseResult = parse(lexicalTree, beautified);
             xmlpadElement.innerHTML = highlightSyntax(beautifiedParseResult.root.children[0], beautified, 0);
-
-            console.log(reverseTraverse(beautifiedParseResult.root.children[0]));
         }
         else {
             xmlpadElement.innerText = defaultText; 
@@ -423,7 +396,7 @@ function editor() {
                 return preCaretRange.toString().length;
             }
 
-            const setCursorPosition = (node, pos) => {
+            const setCursorPosition = () => {
                 const cursorElement = document.getElementById("cursor");
                 if (cursorElement) {
                     let range = document.createRange();
@@ -438,55 +411,9 @@ function editor() {
             }
 
             const cursorPosition = getCursorPosition();
-            console.log("Cursor position is " + cursorPosition);
-
             const parseResult = parse(lexicalTree, xmlpadElement.innerText);
-            if (parseResult.valid) {
-                xmlpadElement.className = "ok";
-            }
-            else {
-                xmlpadElement.className = "fail";
-            }
-
-            let xmlContent = highlightSyntax(parseResult.root.children[0], xmlpadElement.innerText, cursorPosition);
-            xmlpadElement.innerHTML = xmlContent;
-
-            const getCursorNode = (cp) => {
-                let treeWalker = document.createTreeWalker(
-                    xmlpadElement,
-                    NodeFilter.SHOW_TEXT,
-                    { acceptNode: function (node) { return NodeFilter.FILTER_ACCEPT; } },
-                    false
-                );
-
-                let position = 0;
-                let currentNode = treeWalker.nextNode();
-                while (currentNode) {
-                    position += currentNode.length;
-
-                    if (cp < position) {
-                        console.log(position);
-
-                        let textElement = document.createElement("span");
-                        let textNode1 = document.createTextNode(currentNode.textContent.slice(0, position - cp));
-                        let cursorElement = document.createElement("span");
-                        cursorElement.id = "cursor";
-                        let textNode2 = document.createTextNode(currentNode.textContent.slice(position - cp));
-                        textElement.appendChild(textNode1);
-                        textElement.appendChild(cursorElement);
-                        textElement.appendChild(textNode2);
-
-                        currentNode.replaceWith(textElement);
-                        return;
-                    }
-                    currentNode = treeWalker.nextNode();
-                }
-
-                return [xmlpadElement, 0];
-            };
-
-            getCursorNode(cursorPosition);
-            //console.log(cursorNode);
+            xmlpadElement.className = parseResult.valid ? "ok" : "fail";
+            xmlpadElement.innerHTML = highlightSyntax(parseResult.root.children[0], xmlpadElement.innerText, cursorPosition);
             setCursorPosition();
         };
 
