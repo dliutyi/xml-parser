@@ -354,15 +354,15 @@ function editor() {
             xmlpadElement.className = "fail";
         }
 
-        xmlpadElement.addEventListener("input", () => {
-            const getCursorPosition = () => {
+        xmlpadElement.addEventListener("input", (ev) => {
+            const getCursorPosition = (inputType) => {
                 const range = window.getSelection().getRangeAt(0);
                 let preCaretRange = range.cloneRange();
 
                 preCaretRange.selectNodeContents(xmlpadElement);
                 preCaretRange.setEnd(range.endContainer, range.endOffset);
-                return preCaretRange.toString().length;
-            }
+                return preCaretRange.toString().length + (inputType == "insertParagraph");
+            } 
 
             const setCursorPosition = () => {
                 const cursorElement = document.getElementById("cursor");
@@ -377,7 +377,7 @@ function editor() {
                 selection.addRange(range);
             }
 
-            const cursorPosition = getCursorPosition();
+            const cursorPosition = getCursorPosition(ev.inputType);
             const parseResult = parse(lexicalTree, xmlpadElement.innerText);
             xmlpadElement.className = parseResult.valid ? "ok" : "fail";
             xmlpadElement.innerHTML = highlightSyntax(parseResult.root.children[0], xmlpadElement.innerText, cursorPosition);
