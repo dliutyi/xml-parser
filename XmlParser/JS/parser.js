@@ -24,10 +24,6 @@ function editor() {
     const exclamationFunc  = ["[ ! ]", (c) => c == '!'];
     const questionFunc     = ["[ ? ]", (c) => c == '?'];
 
-    function log(text) {
-        //console.log(text);
-    }
-
     function createXmlNode() {
         return {
             name: "",
@@ -38,7 +34,6 @@ function editor() {
             canHaveChildren: true,
             isValueOnly: false,
             originPosition: {
-                name: [0, 0],
                 value: [0, 0]
             }
         };
@@ -74,8 +69,6 @@ function editor() {
 
         let xmlNode = createXmlNode();
         xmlNode.parent = xmlParseState.currentXmlNode;
-        xmlNode.originPosition.name[0] = index;
-
         xmlParseState.currentXmlNode.children.push(xmlNode);
         xmlParseState.currentXmlNode = xmlNode;
         return true;
@@ -162,7 +155,6 @@ function editor() {
             xmlParseState.currentXmlNode.value = xmlParseState.currentXmlNode.value.trim();
             xmlParseState.currentXmlNode = xmlParseState.currentXmlNode.parent;
         }
-        xmlParseState.currentXmlNode.originPosition.name[1] = index;
         xmlParseState.currentXmlNode = xmlParseState.currentXmlNode.parent;
         return true;
     }
@@ -266,38 +258,30 @@ function editor() {
         let xmlParseState = {};
         let xmlGlobalRoot = createXmlNode();
 
-        log("Start parsing -\n" + xml + "\n");
+        //console.log("Start parsing -\n" + xml + "\n");
         currentLexicalNode = xmlLexicalRoot;
         xmlParseState.currentXmlNode = xmlGlobalRoot;
         [...xml].every((symbol, index) => {
             let parsingNodes = currentLexicalNode.next;
-            log("Trying to parse - " + symbol + "\n   Trying apply - " + parsingNodes.map(n => n.name).join(", "));
+            //console.log("Trying to parse - " + symbol + "\n   Trying apply - " + parsingNodes.map(n => n.name).join(", "));
 
             xmlParseState.isValid = !parsingNodes.every(parsingNode => {
                 if (parsingNode.transition(symbol)) {
                     xmlParseState.isActionSuccess = parsingNode.actions.every(action => action(xmlParseState, symbol, index));
                     if (xmlParseState.isActionSuccess) {
-                        log("      " + parsingNode.name + " - Applied");
+                        //console.log("      " + parsingNode.name + " - Applied");
                         currentLexicalNode = parsingNode;
                     }
                     return false;
                 }
                 return true;
             });
-
             return xmlParseState.isValid;
         });
-
-        if (!xmlParseState.isValid) {
-            log("Parse status - Error");
-        }
-
-        log("Parse status - OK");
         return { valid: xmlParseState.isValid, root: xmlGlobalRoot };
     }
 
     const cursor = () => "<span id='cursor'></span>";
-    const tagName = (name) => "&lt;";
     const tagValue = (name) => "<span class='value'>" + name + "</span>";
     const attrName = (name) => "<span class='attr-name'>" + name + "</span>";
     const attrValue = (name) => "<span class='attr-value'>" + name + "</span>";
@@ -317,58 +301,42 @@ function editor() {
     }
 
     function traverse(xmlNode) {
-        if (xmlNode == null) {
-            return [];
-        }
-        else if (xmlNode.isValueOnly) {
-            return [{ start: xmlNode.originPosition.value[0], end: xmlNode.originPosition.value[1], func: tagValue }];
-        }
+        if (xmlNode == null) return [];
+        else if (xmlNode.isValueOnly)
+            return [{ start: xmlNode.originPosition.value[0], end: xmlNode.originPosition.value[1] + 1, func: tagValue }];
 
-        let syntaxPoints = [{ start: xmlNode.originPosition.name[0] - 1, end: xmlNode.originPosition.name[0], func: tagName }];
-        for (let i = 0; i < xmlNode.attributes.length; ++i) {
-            const attr = xmlNode.attributes[i];
-            syntaxPoints.push({ start: attr.originPosition.name[0], end: attr.originPosition.name[1] + 1, func: attrName });
-            if (attr.hasValue) {
-                syntaxPoints.push({ start: attr.originPosition.value[0], end: attr.originPosition.value[1] + 1, func: attrValue });
-            }
-        }
+        let syntaxPoints =
+            xmlNode.attributes.reduce(((attrs, attr) => {
+                const name = { start: attr.originPosition.name[0], end: attr.originPosition.name[1] + 1, func: attrName };
+                return attrs.concat(attr.hasValue
+                    ? [name, { start: attr.originPosition.value[0], end: attr.originPosition.value[1], func: attrValue }]
+                    : [name]);
+            }), []);
 
-        if (xmlNode.canHaveChildren) {
-            for (let i = 0; i < xmlNode.children.length; ++i) {
-                syntaxPoints = syntaxPoints.concat(traverse(xmlNode.children[i]));
-            }
-            syntaxPoints.push({ start: xmlNode.originPosition.name[1] - 1, end: xmlNode.originPosition.name[1], func: tagName });
-        }
-
-        return syntaxPoints;
+        return xmlNode.canHaveChildren
+            ? xmlNode.children.reduce((points, next) => points.concat(traverse(next)), syntaxPoints)
+            : syntaxPoints;
     }
 
     function highlightSyntax(xmlNode, xmlContent, cursorPosition) {
-        const syntaxPoints = traverse(xmlNode);
+        const replaceOpenTag = (symbol) => symbol == '<' ? "&lt;" : symbol;
+        const placeCursor = (i, cp) => i == cp ? cursor() : ""; 
 
-        let sub = "";
         let pointsIndex = 0;
-        let highlightedContent = "";
-        for (let i = 0; i < xmlContent.length; ++i) {
+        const syntaxPoints = traverse(xmlNode);
+        return [...xmlContent].reduce(((state, symbol, i) => {
             if (pointsIndex < syntaxPoints.length && syntaxPoints[pointsIndex].start <= i && syntaxPoints[pointsIndex].end > i) {
-                if (cursorPosition == i) {
-                    sub += cursor();
-                }
-                sub += xmlContent[i];
+                state.sub += placeCursor(i, cursorPosition) + replaceOpenTag(symbol);
             }
             else {
                 if (pointsIndex < syntaxPoints.length && syntaxPoints[pointsIndex].end == i) {
-                    highlightedContent += syntaxPoints[pointsIndex++].func(sub);
-                    sub = "";
+                    state.highlightedContent += syntaxPoints[pointsIndex++].func(state.sub);
+                    state.sub = "";
                 }
-                if (cursorPosition == i) {
-                    highlightedContent += cursor();
-                }
-                highlightedContent += xmlContent[i];
+                state.highlightedContent += placeCursor(i, cursorPosition) + replaceOpenTag(symbol);
             }
-        }
-
-        return highlightedContent;
+            return state;
+        }), { highlightedContent: "", sub: "" }).highlightedContent;
     }
 
     function setupEditor(defaultText) {
@@ -382,11 +350,11 @@ function editor() {
             xmlpadElement.innerHTML = highlightSyntax(beautifiedParseResult.root.children[0], beautified, 0);
         }
         else {
-            xmlpadElement.innerText = defaultText; 
+            xmlpadElement.innerText = defaultText;
             xmlpadElement.className = "fail";
         }
 
-        const reparse = () => {
+        xmlpadElement.addEventListener("input", () => {
             const getCursorPosition = () => {
                 const range = window.getSelection().getRangeAt(0);
                 let preCaretRange = range.cloneRange();
@@ -398,16 +366,15 @@ function editor() {
 
             const setCursorPosition = () => {
                 const cursorElement = document.getElementById("cursor");
-                if (cursorElement) {
-                    let range = document.createRange();
-                    range.setStart(cursorElement, 0);
-                    range.setEnd(cursorElement, 0);
-                    range.collapse(true);
 
-                    let selection = window.getSelection();
-                    selection.removeAllRanges();
-                    selection.addRange(range);
-                }
+                let range = document.createRange();
+                range.setStart(cursorElement, 0);
+                range.setEnd(cursorElement, 0);
+                range.collapse(true);
+
+                let selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
             }
 
             const cursorPosition = getCursorPosition();
@@ -415,17 +382,16 @@ function editor() {
             xmlpadElement.className = parseResult.valid ? "ok" : "fail";
             xmlpadElement.innerHTML = highlightSyntax(parseResult.root.children[0], xmlpadElement.innerText, cursorPosition);
             setCursorPosition();
-        };
-
-        xmlpadElement.addEventListener("input", reparse);
+        });
     }
 
     const fileContent = `
+<?xml version="1.0" encoding="utf-8" ?>
 <database msg="'upload'" response='"success"'>
     <cities>
         <city>
             Kyiv
-            <translation a>
+            <translation>
                 <russian>Киев</russian>
             </translation>
         </city>
@@ -437,7 +403,6 @@ function editor() {
     </people>
 </database>
 `;
-
     setupEditor(fileContent);
 }
 
